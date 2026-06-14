@@ -1,0 +1,952 @@
+{
+  "collections": [
+    {
+      "name": "users",
+      "description": "Stores application users and authentication data.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Primary document identifier."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "description": "User full name."
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "required": true,
+          "description": "User login email."
+        },
+        {
+          "name": "hashed_password",
+          "type": "string",
+          "required": true,
+          "description": "Encrypted user password."
+        },
+        {
+          "name": "mobile",
+          "type": "string",
+          "description": "User mobile number."
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "required": true,
+          "description": "User role in the system."
+        },
+        {
+          "name": "is_active",
+          "type": "boolean",
+          "required": true,
+          "description": "Whether the user account is active."
+        },
+        {
+          "name": "contact_center_supervisor",
+          "type": "boolean",
+          "description": "contact center supervisor"
+        },
+        {
+          "name": "tenant_id",
+          "type": "string|null",
+          "description": "Tenant/company identifier."
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "required": true,
+          "description": "Record creation timestamp."
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "required": true,
+          "description": "Last update timestamp."
+        }
+      ]
+    },
+
+    {
+      "name": "companies",
+      "description": "Stores data of the tenants/companies who use Voxomos/Voxbot service.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "required": true,
+          "description": "Unique tenant/company/firm identifier."
+        },
+        {
+          "name": "core",
+          "type": "object",
+          "description": "Core company details like name, logo, gst and account status."
+        },
+        {
+          "name": "settings",
+          "type": "object",
+          "description": "Company settings and information like logo url and address."
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "required": true,
+          "description": "creation timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "required": true,
+          "description": "updation timestamp"
+        }
+      ]
+    },
+
+    {
+      "name": "campaigns",
+      "description": "Stores records of all campaigns.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "Campaign name."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "description": "Campaign status."
+        },
+        {
+          "name": "active_version",
+          "type": "integer",
+          "description": "Currently active configuration version."
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "required": true,
+          "description": "Tenant identifier."
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "required": true,
+          "description": "creation timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "required": true,
+          "description": "Last update timestamp"
+        }
+      ]
+    },
+
+    {
+      "name": "campaign_configs",
+      "description": "Stores versioned campaign configuration and voicebot settings. Stores more details of campaigns",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "required": true,
+          "description": "Associated campaign identifier."
+        },
+        {
+          "name": "campaign_fields",
+          "type": "array<object>",
+          "required": true,
+          "description": "Dynamic campaign field definitions. If required, stores the responses to the specific campaign questions/fields."
+        },
+        {
+          "name": "voicebot_type",
+          "type": "string",
+          "required": true,
+          "description": "Type of voicebot"
+        },
+        {
+          "name": "prompt_text",
+          "type": "string",
+          "description": "Primary AI/voicebot prompt."
+        },
+        {
+          "name": "language",
+          "type": "string",
+          "description": "Default campaign language."
+        },
+        {
+          "name": "voice",
+          "type": "string",
+          "description": "Which voice being used for the voicenot"
+        },
+        {
+          "name": "voicepack",
+          "type": "string|object",
+          "description": "Voice configuration settings."
+        },
+        {
+          "name": "stt_provider",
+          "type": "string",
+          "description": "Speech-to-text provider."
+        },
+        {
+          "name": "tts_provider",
+          "type": "string",
+          "description": "Text-to-speech provider."
+        },
+        {
+          "name": "speech_lm_provider",
+          "type": "string",
+          "description": "Speech language model provider."
+        },
+        {
+          "name": "speech_lm_model",
+          "type": "string",
+          "description": "Speech language model used"
+        },
+        {
+          "name": "vector_store_id",
+          "type": "string",
+          "description": "Linked vector database identifier."
+        },
+        {
+          "name": "retry_count",
+          "type": "integer",
+          "description": "number of retries"
+        },
+        {
+          "name": "retry_limit",
+          "type": "integer",
+          "description": "maximum number of retries"
+        },
+        {
+          "name": "retry_delay",
+          "type": "integer",
+          "description": "delay before each retry"
+        },
+        {
+          "name": "call_timeout_seconds",
+          "type": "integer",
+          "description": "duration for call timeout"
+        },
+        {
+          "name": "version",
+          "type": "integer",
+          "required": true,
+          "description": "Configuration version."
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated tenant/company"
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "required": true,
+          "description": "creation timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "required": true,
+          "description": "Last update timestamp"
+        }
+      ]
+    },
+
+    {
+      "name": "batch_uploads",
+      "description": "Stores upload batch metadata. Stores details of each batch as the campaign calls are sent in batches",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": true,
+          "description": "Unique batch identifier."
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "required": true,
+          "description": "Associated campaign."
+        },
+        {
+          "name": "contacts_count",
+          "type": "integer",
+          "required": true,
+          "description": "Number of uploaded contacts."
+        },
+        {
+          "name": "excel_upload_url",
+          "type": "string",
+          "description": "Uploaded spreadsheet URL which stores all the contacts to which the calls are sent."
+        },
+        {
+          "name": "call_source",
+          "type": "string",
+          "description": "Source of the call"
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated tenant/company"
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "required": true,
+          "description": "creation timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "required": true,
+          "description": "Last update timestamp"
+        }
+      ]
+    },
+
+    {
+      "name": "contacts",
+      "description": "Stores campaign contact records.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": true,
+          "description": "Associated upload batch."
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "required": true,
+          "description": "Associated campaign."
+        },
+        {
+          "name": "mobile",
+          "type": "string",
+          "required": true,
+          "description": "Contact phone number."
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "Contact name."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "description": "Contact processing/calling status."
+        },
+        {
+          "name": "call_source",
+          "type": "string",
+          "description": "call source"
+        },
+        {
+          "name": "ext",
+          "type": "object",
+          "description": "Additional custom metadata fields."
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated tenant/company"
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "required": true,
+          "description": "creation timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "required": true,
+          "description": "Last update timestamp"
+        }
+      ]
+    },
+
+    {
+      "name": "campaign_queue",
+      "description": "Stores queued outbound call records.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "contact_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Associated contact document."
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated campaign"
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated batch"
+        },
+        {
+          "name": "mobile",
+          "type": "string",
+          "required": true,
+          "description": "mobile number of the person to whome the call needs to go"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "name of the person the call needs to go to"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "description": "Queue status."
+        },
+        {
+          "name": "attempts",
+          "type": "integer",
+          "required": true,
+          "description": "Number of retry attempts."
+        },
+        {
+          "name": "priority",
+          "type": "integer",
+          "required": true,
+          "description": "Queue priority."
+        },
+        {
+          "name": "next_attempt_at",
+          "type": "date|null",
+          "description": "date and time of next attempt"
+        },
+        {
+          "name": "leased_at",
+          "type": "date",
+          "description": "date of lease"
+        },
+        {
+          "name": "cancel_requested",
+          "type": "boolean",
+          "required": true,
+          "description": "if cancellation is requested or not"
+        },
+        {
+          "name": "final_outcome",
+          "type": "string",
+          "description": "outcome of the call - if failed or answered"
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated tenant/company"
+        }
+      ]
+    },
+
+    {
+      "name": "call_history",
+      "description": "Stores detailed call execution logs and transcripts.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId|string",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "contact_id",
+          "type": "objectId",
+          "description": "Linked contact document."
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "description": "id of the associated campaign"
+        },
+        {
+          "name": "batch_id",
+          "type": "string",
+          "description": "id of the associated batch"
+        },
+        {
+          "name": "mobile",
+          "type": "string",
+          "description": "mobile number of the customer"
+        },
+        {
+          "name": "direction",
+          "type": "string",
+          "description": "Inbound/outbound direction."
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "description": "Call status."
+        },
+        {
+          "name": "duration",
+          "type": "integer",
+          "description": "Call duration."
+        },
+        {
+          "name": "duration_seconds",
+          "type": "integer|double|null",
+          "description": "Duration in seconds"
+        },
+        {
+          "name": "transcript",
+          "type": "string|null",
+          "description": "Call transcript."
+        },
+        {
+          "name": "call_summary",
+          "type": "string",
+          "description": "Summary of the call."
+        },
+        {
+          "name": "agent_id",
+          "type": "string",
+          "description": "id of the agent"
+        },
+        {
+          "name": "agent_name",
+          "type": "string",
+          "description": "name of the agent"
+        },
+        {
+          "name": "recording_file",
+          "type": "string|null",
+          "description": "Recording file path."
+        },
+        {
+          "name": "recording_s3_key",
+          "type": "string",
+          "description": ""
+        },
+        {
+          "name": "attempts",
+          "type": "array<object>",
+          "description": "Retry attempt history."
+        },
+        {
+          "name": "state_history",
+          "type": "array<object>",
+          "description": "Conversation state machine history."
+        },
+        {
+          "name": "ext",
+          "type": "object",
+          "description": "Custom campaign specific metadata."
+        },
+        {
+          "name": "created_at",
+          "type": "date",
+          "description": "creation timestamp"
+        },
+        {
+          "name": "updated_at",
+          "type": "date",
+          "description": "Last update timestamp"
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "description": "id of the associated tenant/company"
+        }
+      ]
+    },
+
+    {
+      "name": "contact_center_agents",
+      "description": "Stores contact center SIP and agent configuration.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "user_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Linked user account."
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "description": "id of the associated campaign"
+        },
+        {
+          "name": "display_name",
+          "type": "string",
+          "description": "Displayed name"
+        },
+        {
+          "name": "sip_extension",
+          "type": "string",
+          "description": "SIP extention"
+        },
+        {
+          "name": "sip_username",
+          "type": "string",
+          "description": "SIP username"
+        },
+        {
+          "name": "sip_password",
+          "type": "string",
+          "description": "SIP password"
+        },
+        {
+          "name": "contact_center_server_url",
+          "type": "string",
+          "required": true,
+          "description": "contact center server's url"
+        },
+        {
+          "name": "contact_center_ws_url",
+          "type": "string",
+          "required": true,
+          "description": "contact center WS url"
+        },
+        {
+          "name": "enabled",
+          "type": "boolean",
+          "required": true,
+          "description": "enabled or not"
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated tenant/company"
+        }
+      ]
+    },
+
+    {
+      "name": "scheduled_jobs",
+      "description": "Stores scheduled jobs.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated campaign"
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "required": true,
+          "description": "Job name."
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": true,
+          "description": "Job description"
+        },
+        {
+          "name": "job_type",
+          "type": "string",
+          "required": true,
+          "description": "Type of job"
+        },
+        {
+          "name": "schedule_type",
+          "type": "string",
+          "required": true,
+          "description": "Type of schedule"
+        },
+        {
+          "name": "cron_expression",
+          "type": "string",
+          "required": true,
+          "description": "Cron schedule."
+        },
+        {
+          "name": "timezone",
+          "type": "string",
+          "required": true,
+          "description": "Timezone of the job"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "description": "Job status"
+        },
+        {
+          "name": "config",
+          "type": "object",
+          "required": true,
+          "description": "Job execution configuration."
+        },
+        {
+          "name": "retry",
+          "type": "object",
+          "required": true,
+          "description": "Retry configuration."
+        },
+        {
+          "name": "last_run_at",
+          "type": "date",
+          "description": "When the job was last run"
+        },
+        {
+          "name": "next_run_at",
+          "type": "date",
+          "description": "When the job will run next"
+        },
+        {
+          "name": "failure_email_to",
+          "type": "array<string>",
+          "description": "If failed who to email"
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated tenant/company"
+        }
+      ]
+    },
+
+    {
+      "name": "scheduled_job_runs",
+      "description": "Stores scheduled jobs that are running.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "scheduled_job_id",
+          "type": "string",
+          "required": true,
+          "description": "Associated scheduled job."
+        },
+        {
+          "name": "campaign_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated campaign"
+        },
+        {
+          "name": "job_type",
+          "type": "string",
+          "required": true,
+          "description": "Type of job"
+        },
+        {
+          "name": "status",
+          "type": "string",
+          "required": true,
+          "description": "Execution status."
+        },
+        {
+          "name": "attempt",
+          "type": "integer",
+          "required": true,
+          "description": "Number of attempts"
+        },
+        {
+          "name": "execution_ms",
+          "type": "integer",
+          "required": true,
+          "description": "Execution duration in milliseconds."
+        },
+        {
+          "name": "scheduled_for",
+          "type": "date",
+          "required": true,
+          "description": "When the job will run"
+        },
+        {
+          "name": "started_at",
+          "type": "date",
+          "required": true,
+          "description": "When job was started"
+        },
+        {
+          "name": "finished_at",
+          "type": "date",
+          "required": true,
+          "description": "When job was finished"
+        },
+        {
+          "name": "result",
+          "type": "object",
+          "required": true,
+          "description": "Execution result metadata."
+        },
+        {
+          "name": "input_snapshot",
+          "type": "object",
+          "required": true,
+          "description": "Captured execution input."
+        },
+        {
+          "name": "tenant_id",
+          "type": "string",
+          "required": true,
+          "description": "id of the associated tenant/company"
+        }
+      ]
+    },
+
+    {
+      "name": "blacklist_contacts",
+      "description": "Stores blocked phone numbers.",
+
+      "fields": [
+        {
+          "name": "_id",
+          "type": "objectId",
+          "required": true,
+          "description": "Unique identifier"
+        },
+        {
+          "name": "mobile",
+          "type": "string",
+          "required": true,
+          "description": "Blocked mobile number."
+        }
+      ]
+    }
+  ],
+
+  "relationships": [
+    {
+      "from": "users.tenant_id",
+      "to": "companies.tenant_id",
+      "type": "reference",
+      "description": "Users belong to a tenant/company."
+    },
+    {
+      "from": "campaigns.tenant_id",
+      "to": "companies.tenant_id",
+      "type": "reference",
+      "description": "Campaign belongs to a tenant."
+    },
+    {
+      "from": "campaign_configs.campaign_id",
+      "to": "campaigns._id",
+      "type": "reference",
+      "description": "Campaign details belongs to a campaign."
+    },
+    {
+      "from": "contacts.campaign_id",
+      "to": "campaigns._id",
+      "type": "reference",
+      "description": "Contacts belong to campaign."
+    },
+    {
+      "from": "contacts.batch_id",
+      "to": "batch_uploads.batch_id",
+      "type": "reference",
+      "description": "batch uploads have a contact."
+    },
+    {
+      "from": "campaign_queue.contact_id",
+      "to": "contacts._id",
+      "type": "reference",
+      "description": "Queue entries reference contacts."
+    },
+    {
+      "from": "call_history.contact_id",
+      "to": "contacts._id",
+      "type": "reference",
+      "description": "Call history references contacts."
+    },
+    {
+      "from": "contact_center_agents.user_id",
+      "to": "users._id",
+      "type": "reference",
+      "description": "Agent configuration belongs to a user."
+    },
+    {
+      "from": "scheduled_jobs.campaign_id",
+      "to": "campaigns._id",
+      "type": "reference",
+      "description": "Scheduled jobs belong to campaigns."
+    },
+    {
+      "from": "scheduled_job_runs.scheduled_job_id",
+      "to": "scheduled_jobs._id",
+      "type": "reference",
+      "description": "Job runs belong to scheduled jobs."
+    }
+  ]
+}

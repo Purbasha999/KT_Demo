@@ -1,0 +1,359 @@
+{
+  "tables": [
+    {
+      "name": "users",
+      "description": "Registered users and administrators.",
+      "fields": [
+        { "name": "_id",       "type": "objectId", "description": "Primary identifier." },
+        { "name": "name",      "type": "string",   "description": "Full name." },
+        { "name": "email",     "type": "string",   "description": "Email address." },
+        { "name": "phone",     "type": "string",   "description": "Phone number." },
+        { "name": "role",      "type": "string",   "description": "ADMIN or USER." },
+        { "name": "createdAt", "type": "date",     "description": "Account creation timestamp." }
+      ]
+    },
+    {
+      "name": "flights",
+      "description": "Flight schedules. source and destination are nested objects with fields: city (string), code (string).",
+      "fields": [
+        { 
+            "name": "_id",
+            "type": "objectId", 
+            "description": "Primary identifier." 
+        },
+        { 
+            "name": "flightNumber",   
+            "type": "string",   
+            "description": "Unique flight number e.g. AI-101." 
+        },
+        { 
+            "name": "airline", 
+            "type": "string", 
+            "description": "Airline name e.g. Air India." 
+        },
+        { 
+            "name": "airlineCode", 
+            "type": "string", 
+            "description": "Short airline code e.g. AI." 
+        },
+        { 
+            "name": "aircraft",       
+            "type": "string",   
+            "description": "Aircraft model e.g. Boeing 737." 
+        },
+        { 
+            "name": "source.city",    
+            "type": "string",   
+            "description": "Departure city e.g. Delhi." 
+        },
+        { 
+            "name": "source.code",    
+            "type": "string",   
+            "description": "Departure airport IATA code e.g. DEL." 
+        },
+        { 
+            "name": "destination.city",    
+            "type": "string", 
+            "description": "Arrival city e.g. Mumbai." 
+        },
+        { 
+            "name": "destination.code",    
+            "type": "string", 
+            "description": "Arrival airport IATA code e.g. BOM." 
+        },
+        { 
+            "name": "departureTime",  
+            "type": "date",    
+            "description": "Departure timestamp." 
+        },
+        { 
+            "name": "arrivalTime",    
+            "type": "date",    
+            "description": "Arrival timestamp." 
+        },
+        { 
+            "name": "duration",       
+            "type": "integer", 
+            "description": "Duration in minutes." 
+        },
+        { 
+            "name": "basePrice",      
+            "type": "integer", 
+            "description": "Base ticket price in INR." 
+        },
+        { 
+            "name": "totalSeats",     
+            "type": "integer", 
+            "description": "Total seat count." 
+        },
+        { 
+            "name": "availableSeats", 
+            "type": "integer", 
+            "description": "Available seats remaining." 
+        },
+        { 
+            "name": "status",         
+            "type": "string",  
+            "description": "SCHEDULED, DELAYED, CANCELLED, or COMPLETED." 
+        },
+        { 
+            "name": "isActive",       
+            "type": "boolean", 
+            "description": "Whether the flight is active." 
+        },
+        { 
+            "name": "createdAt",      
+            "type": "date",    
+            "description": "Record creation timestamp." 
+        }
+      ]
+    },
+    {
+      "name": "seats",
+      "description": "Seat inventory per flight. Each seat belongs to one flight via flightId.",
+      "fields": [
+            { 
+                "name": "_id",        
+                "type": "objectId", 
+                "description": "Primary identifier." 
+            },
+            { 
+                "name": "flightId",   
+                "type": "objectId", 
+                "description": "Reference to flights._id." 
+            },
+            { 
+                "name": "seatNumber", 
+                "type": "string",   
+                "description": "Seat label e.g. 1A, 12C." 
+            },
+            { 
+                "name": "row",        
+                "type": "integer",  
+                "description": "Row number e.g. 1, 2, 12." 
+            },
+            { 
+                "name": "column",     
+                "type": "string",   
+                "description": "Column letter e.g. A, B, C." 
+            },
+            { 
+                "name": "class",      
+                "type": "string",   
+                "description": "ECONOMY or BUSINESS." 
+            },
+            { 
+                "name": "seatType",   
+                "type": "string",   
+                "description": "WINDOW, MIDDLE, or AISLE." 
+            },
+            { 
+                "name": "extraCharge",
+                "type": "integer",  
+                "description": "Extra charge in INR based on seat type and class." 
+            },
+            { 
+                "name": "status",     
+                "type": "string",   
+                "description": "AVAILABLE, LOCKED, or CONFIRMED." 
+            },
+            { "name": "bookedBy",   
+                "type": "objectId", 
+                "description": "Reference to users._id. Null if not booked." 
+            }
+        ]
+    },
+    {
+      "name": "bookings",
+      "description": "Passenger bookings. Each booking links a user, a flight, and one or more seats. passengers is an array of objects each with: name (string), age (integer), gender (MALE/FEMALE/OTHER), seatNumber (string). priceBreakdown contains: basePrice, demandSurcharge, lastMinuteSurcharge, seatCharges, taxes, totalPrice (all integers).",
+      
+      "fields": [
+            { 
+                "name": "_id",                        
+                "type": "objectId", 
+                "description": "Primary identifier." 
+            },
+            { 
+                "name": "bookingRef",                 
+                "type": "string",   
+                "description": "Unique booking reference e.g. BK-00123." 
+            },
+            { 
+                "name": "userId",                     
+                "type": "objectId", 
+                "description": "Reference to users._id." 
+            },
+            { 
+                "name": "flightId",                   
+                "type": "objectId", 
+                "description": "Reference to flights._id." 
+            },
+            { 
+                "name": "bookingStatus",              
+                "type": "string",   
+                "description": "PENDING, CONFIRMED, or CANCELLED." 
+            },
+            { 
+                "name": "paymentStatus",              
+                "type": "string",   
+                "description": "PENDING, PAID, or REFUNDED." 
+            },
+            { 
+                "name": "passengers",                 
+                "type": "array",    
+                "description": "Array of passenger objects: name, age, gender (MALE/FEMALE/OTHER), seatNumber." 
+            },
+            { 
+                "name": "passengers.name",            
+                "type": "string",   
+                "description": "Passenger full name." 
+            },
+            { 
+                "name": "passengers.age",             
+                "type": "integer",  
+                "description": "Passenger age." 
+            },
+            { 
+                "name": "passengers.gender",          
+                "type": "string",   
+                "description": "MALE, FEMALE, or OTHER." 
+            },
+            { 
+                "name": "passengers.seatNumber",      
+                "type": "string",   
+                "description": "Assigned seat e.g. 3B." 
+            },
+            { 
+                "name": "priceBreakdown.basePrice",   
+                "type": "integer",  
+                "description": "Base fare." 
+            },
+            { 
+                "name": "priceBreakdown.totalPrice",  
+                "type": "integer",  
+                "description": "Final total price paid." 
+            },
+            { 
+                "name": "priceBreakdown.taxes",       
+                "type": "integer",  
+                "description": "Tax amount." 
+            },
+            { 
+                "name": "priceBreakdown.seatCharges", 
+                "type": "integer",  
+                "description": "Seat upgrade charges." 
+            },
+            { 
+                "name": "cancellationReason",         
+                "type": "string",   
+                "description": "Reason for cancellation if cancelled." 
+            },
+            { 
+                "name": "cancelledAt",                
+                "type": "date",     
+                "description": "Cancellation timestamp. Null if not cancelled." 
+            },
+            { 
+                "name": "createdAt",                  
+                "type": "date",     
+                "description": "Booking creation timestamp." 
+            }
+        ]
+    },
+    {
+      "name": "pricingrules",
+      "description": "Dynamic pricing rules which are applied to all flights. condition is a nested object with: threshold (0-100, for DEMAND rules), hoursBeforeDeparture (for TIME rules), seatType (WINDOW/MIDDLE/AISLE, for SEAT_TYPE rules), class (ECONOMY/BUSINESS, for CLASS rules).",
+
+      "fields": [
+            { 
+                "name": "_id",                        
+                "type": "objectId", 
+                "description": "Primary identifier of the pricing rule." 
+            },
+            { 
+                "name": "name",                       
+                "type": "string",   
+                "description": "Rule name." 
+            },
+            { 
+                "name": "description",                
+                "type": "string",   
+                "description": "Rule description." 
+            },
+            { 
+                "name": "type",                       
+                "type": "string",   
+                "description": "DEMAND, TIME, SEAT_TYPE, or CLASS." 
+            },
+            { 
+                "name": "charge",                     
+                "type": "integer",  
+                "description": "Extra charge in INR." 
+            },
+            { 
+                "name": "condition.threshold",        
+                "type": "number",   
+                "description": "Occupancy % threshold for DEMAND rules (0-100)." 
+            },
+            { 
+                "name": "condition.hoursBeforeDeparture", 
+                "type": "number", 
+                "description": "Hours before departure for TIME rules." 
+            },
+            { 
+                "name": "condition.seatType",         
+                "type": "string",   
+                "description": "WINDOW, MIDDLE, or AISLE for SEAT_TYPE rules." 
+            },
+            { 
+                "name": "condition.class",            
+                "type": "string",   
+                "description": "ECONOMY or BUSINESS for CLASS rules." 
+            },
+            { 
+                "name": "isActive",                   
+                "type": "boolean",  
+                "description": "Whether this rule is currently active." 
+            },
+            { 
+                "name": "createdAt",                  
+                "type": "date",     
+                "description": "Rule creation timestamp." 
+            }
+      ]
+    }
+  ],
+
+  "relationships": [
+        { 
+            "from": "bookings.userId",         
+            "to": "users._id",    
+            "type": "reference", 
+            "description": "Booking belongs to a user. Use $lookup with localField: userId, foreignField: _id, from: users." 
+        },
+        { 
+            "from": "bookings.flightId",       
+            "to": "flights._id",  
+            "type": "reference", 
+            "description": "Booking is for a flight. Use $lookup with localField: flightId, foreignField: _id, from: flights." 
+        },
+        { 
+            "from": "bookings.seats.seatId",   
+            "to": "seats._id",    
+            "type": "reference", 
+            "description": "Booking references seats. Use $lookup with localField: seats.seatId, foreignField: _id, from: seats." 
+        },
+        { 
+            "from": "seats.flightId",          
+            "to": "flights._id",  
+            "type": "reference", 
+            "description": "Seat belongs to a flight. Use $lookup with localField: flightId, foreignField: _id, from: flights." 
+        },
+        { 
+            "from": "seats.bookedBy",          
+            "to": "users._id",    
+            "type": "reference", 
+            "description": "Seat booked by a user. Use $lookup with localField: bookedBy, foreignField: _id, from: users." 
+        }
+    ]
+}

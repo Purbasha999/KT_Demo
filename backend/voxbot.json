@@ -1,0 +1,400 @@
+{
+  "tables": [
+
+    {
+      "name": "users",
+      "description": "Platform users including admins and agents. role field controls access level.",
+      "fields": [
+        { 
+            "name": "_id",                     
+            "type": "objectId", 
+            "description": "Primary identifier." },
+        { 
+            "name": "name",                    
+            "type": "string",   
+            "description": "Full name of the user." },
+        { 
+            "name": "email",                   
+            "type": "string",   
+            "description": "Login email address." },
+        { 
+            "name": "mobile",                  
+            "type": "string",   
+            "description": "Mobile phone number." },
+        { 
+            "name": "role",                    
+            "type": "string",   
+            "description": "User role e.g. admin, agent, supervisor." },
+        { 
+            "name": "is_active",               
+            "type": "boolean",  
+            "description": "Whether the user account is active." },
+        { 
+            "name": "tenant_id",               
+            "type": "string",   
+            "description": "Tenant this user belongs to." },
+        { 
+            "name": "contact_center_supervisor",
+            "type": "boolean", 
+            "description": "Whether the user is a contact center supervisor." },
+        { 
+            "name": "created_at",              
+            "type": "date",     
+            "description": "Account creation timestamp." },
+        { 
+            "name": "updated_at",             
+            "type": "date",     
+            "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "companies",
+      "description": "Tenant/company accounts on the platform. Each company has a unique tenant_id.",
+      "fields": [
+        { "name": "_id",                   "type": "objectId", "description": "Primary identifier." },
+        { "name": "tenant_id",             "type": "string",   "description": "Unique tenant identifier for this company." },
+        { "name": "core.name",             "type": "string",   "description": "Company name." },
+        { "name": "core.account_status",   "type": "string",   "description": "Account status e.g. active, inactive, closed." },
+        { "name": "core.gst",              "type": "string",   "description": "GST number of the company." },
+        { "name": "core.account_live_date","type": "date",     "description": "Date the account went live." },
+        { "name": "core.account_closed_date","type": "date",   "description": "Date the account was closed, if applicable." },
+        { "name": "core.status_actor",     "type": "string",   "description": "Who last changed the account status." },
+        { "name": "core.status_changed_at","type": "date",     "description": "When the account status last changed." },
+        { "name": "settings.address",      "type": "string",   "description": "Company address." },
+        { "name": "settings.logo_url",     "type": "string",   "description": "URL of the company logo." },
+        { "name": "created_at",            "type": "date",     "description": "Record creation timestamp." },
+        { "name": "updated_at",            "type": "date",     "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "campaigns",
+      "description": "Voicebot calling campaigns. Each campaign belongs to a tenant and has a status and active version.",
+      "fields": [
+        { "name": "_id",            "type": "objectId", "description": "Primary identifier." },
+        { "name": "name",           "type": "string",   "description": "Campaign name." },
+        { "name": "status",         "type": "string",   "description": "Campaign status e.g. active, paused, completed, draft." },
+        { "name": "tenant_id",      "type": "string",   "description": "Tenant this campaign belongs to." },
+        { "name": "active_version", "type": "integer",  "description": "Currently active config version number." },
+        { "name": "created_at",     "type": "date",     "description": "Campaign creation timestamp." },
+        { "name": "updated_at",     "type": "date",     "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "campaign_configs",
+      "description": "Voicebot configuration for a campaign version. Contains call behaviour settings, retry logic, speech providers, and campaign field definitions.",
+      "fields": [
+        { "name": "_id",                  "type": "objectId", "description": "Primary identifier." },
+        { "name": "campaign_id",          "type": "string",   "description": "Reference to campaigns._id (stored as string)." },
+        { "name": "tenant_id",            "type": "string",   "description": "Tenant this config belongs to." },
+        { "name": "type",                 "type": "string",   "description": "Campaign type e.g. outbound, inbound." },
+        { "name": "voicebot_type",        "type": "string",   "description": "Voicebot engine type." },
+        { "name": "version",              "type": "integer",  "description": "Config version number." },
+        { "name": "language",             "type": "string",   "description": "Default language code e.g. en-IN, hi-IN." },
+        { "name": "phone_number",         "type": "string",   "description": "Caller ID phone number used for this campaign." },
+        { "name": "retry_count",          "type": "integer",  "description": "Number of retry attempts allowed." },
+        { "name": "retry_limit",          "type": "integer",  "description": "Maximum retry limit." },
+        { "name": "retry_delay",          "type": "integer",  "description": "Delay between retries in minutes." },
+        { "name": "retry_delay_seconds",  "type": "integer",  "description": "Delay between retries in seconds." },
+        { "name": "call_timeout_seconds", "type": "integer",  "description": "Seconds before a call attempt times out." },
+        { "name": "stt_provider",         "type": "string",   "description": "Speech-to-text provider name." },
+        { "name": "tts_provider",         "type": "string",   "description": "Text-to-speech provider name." },
+        { "name": "speech_lm_provider",   "type": "string",   "description": "LLM provider used for speech understanding." },
+        { "name": "speech_lm_model",      "type": "string",   "description": "LLM model name used for speech understanding." },
+        { "name": "voice",                "type": "string",   "description": "Voice identifier for TTS." },
+        { "name": "barge_in_mode",        "type": "string",   "description": "Barge-in behaviour mode." },
+        { "name": "prompt_text",          "type": "string",   "description": "Opening prompt text for the bot." },
+        { "name": "notes",                "type": "string",   "description": "Internal notes about the config." },
+        { "name": "campaign_fields",      "type": "array",    "description": "Array of custom field definitions for this campaign. Each item has: name (string), type (string), direction (string), display_name (string), description (string)." },
+        { "name": "created_at",           "type": "date",     "description": "Config creation timestamp." },
+        { "name": "updated_at",           "type": "date",     "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "contacts",
+      "description": "Contact records uploaded for a campaign batch. Each contact has a mobile number and optional extended fields.",
+      "fields": [
+        { "name": "_id",         "type": "objectId", "description": "Primary identifier." },
+        { "name": "name",        "type": "string",   "description": "Contact full name." },
+        { "name": "mobile",      "type": "string",   "description": "Contact mobile number." },
+        { "name": "campaign_id", "type": "string",   "description": "Reference to campaigns._id (stored as string)." },
+        { "name": "batch_id",    "type": "string",   "description": "Reference to batch_uploads.batch_id this contact belongs to." },
+        { "name": "tenant_id",   "type": "string",   "description": "Tenant this contact belongs to." },
+        { "name": "status",      "type": "string",   "description": "Contact processing status." },
+        { "name": "call_source", "type": "string",   "description": "Source of the call e.g. bulk_upload, api." },
+        { "name": "ext.city",        "type": "string",  "description": "Extended field: contact city." },
+        { "name": "ext.coupon",      "type": "string",  "description": "Extended field: coupon code." },
+        { "name": "ext.emi_amount",  "type": "string",  "description": "Extended field: EMI amount." },
+        { "name": "ext.lead_source", "type": "string",  "description": "Extended field: lead source." },
+        { "name": "ext.priority",    "type": "integer", "description": "Extended field: priority level." },
+        { "name": "created_at",  "type": "date",     "description": "Record creation timestamp." },
+        { "name": "updated_at",  "type": "date",     "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "batch_uploads",
+      "description": "Records of contact list uploads for a campaign. Each batch contains multiple contacts.",
+      "fields": [
+        { "name": "_id",              "type": "objectId", "description": "Primary identifier." },
+        { "name": "batch_id",         "type": "string",   "description": "Unique batch identifier." },
+        { "name": "campaign_id",      "type": "string",   "description": "Reference to campaigns._id (stored as string)." },
+        { "name": "tenant_id",        "type": "string",   "description": "Tenant this batch belongs to." },
+        { "name": "contacts_count",   "type": "integer",  "description": "Number of contacts in this batch." },
+        { "name": "call_source",      "type": "string",   "description": "Upload source e.g. excel, api." },
+        { "name": "excel_upload_url", "type": "string",   "description": "URL of the uploaded Excel file." },
+        { "name": "created_at",       "type": "date",     "description": "Batch upload timestamp." },
+        { "name": "updated_at",       "type": "date",     "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "campaign_queue",
+      "description": "Call queue entries for a campaign. Each entry represents one contact to be called, with retry tracking and current status.",
+      "fields": [
+        { "name": "_id",              "type": "objectId", "description": "Primary identifier." },
+        { "name": "name",             "type": "string",   "description": "Contact name." },
+        { "name": "mobile",           "type": "string",   "description": "Contact mobile number to call." },
+        { "name": "campaign_id",      "type": "string",   "description": "Reference to campaigns._id (stored as string)." },
+        { "name": "contact_id",       "type": "objectId", "description": "Reference to contacts._id." },
+        { "name": "batch_id",         "type": "string",   "description": "Reference to batch_uploads.batch_id." },
+        { "name": "tenant_id",        "type": "string",   "description": "Tenant this queue entry belongs to." },
+        { "name": "status",           "type": "string",   "description": "Queue entry status e.g. pending, in_progress, done, failed." },
+        { "name": "priority",         "type": "integer",  "description": "Call priority. Higher value = higher priority." },
+        { "name": "attempts",         "type": "integer",  "description": "Number of call attempts made so far." },
+        { "name": "call_source",      "type": "string",   "description": "Source of this queue entry e.g. bulk_upload, api." },
+        { "name": "cancel_requested", "type": "boolean",  "description": "Whether cancellation has been requested for this entry." },
+        { "name": "final_outcome",    "type": "string",   "description": "Final outcome after all attempts e.g. answered, not_answered." },
+        { "name": "last_pre_answer",  "type": "string",   "description": "Last pre-answer SIP status." },
+        { "name": "reason",           "type": "string",   "description": "Reason for current status." },
+        { "name": "next_attempt_at",  "type": "date",     "description": "Scheduled time for next retry. Null if no retry scheduled." },
+        { "name": "leased_at",        "type": "date",     "description": "Timestamp when this entry was leased to a dialer." },
+        { "name": "ext.city",         "type": "string",   "description": "Extended field: contact city." },
+        { "name": "ext.coupon",       "type": "string",   "description": "Extended field: coupon code." },
+        { "name": "ext.emi_amount",   "type": "string",   "description": "Extended field: EMI amount." },
+        { "name": "ext.lead_source",  "type": "string",   "description": "Extended field: lead source." },
+        { "name": "ext.priority",     "type": "integer",  "description": "Extended field: priority value." },
+        { "name": "created_at",       "type": "date",     "description": "Queue entry creation timestamp." },
+        { "name": "updated_at",       "type": "date",     "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "blacklist_contacts",
+      "description": "Mobile numbers that are blacklisted and must not be called.",
+      "fields": [
+        { "name": "_id",    "type": "objectId", "description": "Primary identifier." },
+        { "name": "mobile", "type": "string",   "description": "Blacklisted mobile number." }
+      ]
+    },
+
+    {
+      "name": "contact_center_agents",
+      "description": "Contact center agent configurations including SIP credentials and server URLs. Each agent is linked to a platform user.",
+      "fields": [
+        { "name": "_id",                       "type": "objectId", "description": "Primary identifier." },
+        { "name": "user_id",                   "type": "objectId", "description": "Reference to users._id." },
+        { "name": "tenant_id",                 "type": "string",   "description": "Tenant this agent belongs to." },
+        { "name": "campaign_id",               "type": "string",   "description": "Campaign this agent is assigned to (if any)." },
+        { "name": "display_name",              "type": "string",   "description": "Agent display name shown in the UI." },
+        { "name": "type",                      "type": "string",   "description": "Agent type e.g. sip, webrtc." },
+        { "name": "enabled",                   "type": "boolean",  "description": "Whether this agent is currently enabled." },
+        { "name": "sip_username",              "type": "string",   "description": "SIP username for this agent." },
+        { "name": "sip_extension",             "type": "string",   "description": "SIP extension number." },
+        { "name": "sip_domain",                "type": "string",   "description": "SIP domain." },
+        { "name": "asterisk_queue",            "type": "string",   "description": "Asterisk queue name this agent is assigned to." },
+        { "name": "contact_center_server_url", "type": "string",   "description": "HTTP URL of the contact center server." },
+        { "name": "contact_center_ws_url",     "type": "string",   "description": "WebSocket URL of the contact center server." },
+        { "name": "wss_url",                   "type": "string",   "description": "Secure WebSocket URL." },
+        { "name": "manual_dialout_enabled",    "type": "boolean",  "description": "Whether manual dial-out is enabled for this agent." },
+        { "name": "manual_dialout_callerid",   "type": "string",   "description": "Caller ID used for manual dial-out." },
+        { "name": "manual_dialout_trunkid",    "type": "string",   "description": "Trunk ID used for manual dial-out." },
+        { "name": "created_at",                "type": "date",     "description": "Record creation timestamp." },
+        { "name": "updated_at",                "type": "date",     "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "call_history",
+      "description": "Full record of every call attempt made by the voicebot or contact center. Contains call outcome, duration, transcript, state history, agent disposition, and all extended bot-captured fields.",
+      "fields": [
+        { "name": "_id",                "type": "objectId", "description": "Primary identifier." },
+        { "name": "campaign_id",        "type": "string",   "description": "Reference to campaigns._id (stored as string)." },
+        { "name": "contact_id",         "type": "objectId", "description": "Reference to contacts._id." },
+        { "name": "tenant_id",          "type": "string",   "description": "Tenant this call belongs to." },
+        { "name": "name",               "type": "string",   "description": "Contact name at time of call." },
+        { "name": "mobile",             "type": "string",   "description": "Mobile number called." },
+        { "name": "called_number",      "type": "string",   "description": "The number that was dialled." },
+        { "name": "from_number",        "type": "string",   "description": "Caller ID number used." },
+        { "name": "from_callerid",      "type": "string",   "description": "Caller ID label." },
+        { "name": "direction",          "type": "string",   "description": "Call direction: inbound or outbound." },
+        { "name": "status",             "type": "string",   "description": "Overall call status e.g. completed, failed, no_answer." },
+        { "name": "disposition",        "type": "string",   "description": "Call disposition set by the bot." },
+        { "name": "final_outcome",      "type": "string",   "description": "Final outcome after all attempts." },
+        { "name": "duration",           "type": "integer",  "description": "Call duration in seconds." },
+        { "name": "duration_seconds",   "type": "number",   "description": "Call duration in seconds (decimal)." },
+        { "name": "total_attempts",     "type": "integer",  "description": "Total number of call attempts made." },
+        { "name": "attempt_id",         "type": "string",   "description": "ID of the current/last attempt." },
+        { "name": "batch_id",           "type": "string",   "description": "Reference to batch_uploads.batch_id." },
+        { "name": "call_source",        "type": "string",   "description": "Source of the call e.g. bulk_upload, manual." },
+        { "name": "call_summary",       "type": "string",   "description": "AI-generated summary of the call." },
+        { "name": "transcript",         "type": "string",   "description": "Full call transcript text. Null if unavailable." },
+        { "name": "notes",              "type": "string",   "description": "Manual notes added to the call." },
+        { "name": "recording_file",     "type": "string",   "description": "Recording filename. Null if not recorded." },
+        { "name": "recording_s3_key",   "type": "string",   "description": "S3 key path for the recording file." },
+        { "name": "trunk",              "type": "string",   "description": "Telephony trunk used for the call." },
+        { "name": "linkedid",           "type": "string",   "description": "Asterisk linked call ID." },
+        { "name": "parent_call_id",     "type": "string",   "description": "Parent call ID for transferred calls." },
+        { "name": "queue_id",           "type": "string",   "description": "Contact center queue ID." },
+        { "name": "queue_name",         "type": "string",   "description": "Contact center queue name." },
+        { "name": "bot_hangup_reason",  "type": "string",   "description": "Reason the bot hung up." },
+        { "name": "call_hangup_actor",  "type": "string",   "description": "Who hung up: bot, agent, or customer." },
+        { "name": "fail_reason",        "type": "string",   "description": "Reason for call failure. Null if successful." },
+        { "name": "sip_status",         "type": "string",   "description": "SIP response code. Null if not applicable." },
+        { "name": "mongo_campaign_id",  "type": "string",   "description": "Legacy campaign ID reference." },
+        { "name": "call_datetime",      "type": "date",     "description": "Timestamp when the call was initiated." },
+        { "name": "initiated_at",       "type": "date",     "description": "Timestamp when the call was initiated." },
+        { "name": "answered_at",        "type": "date",     "description": "Timestamp when the call was answered. Null if not answered." },
+        { "name": "ended_at",           "type": "date",     "description": "Timestamp when the call ended." },
+        { "name": "final_attempt_at",   "type": "date",     "description": "Timestamp of the final attempt." },
+        { "name": "agent_id",           "type": "string",   "description": "ID of the agent who handled the call (if transferred)." },
+        { "name": "agent_name",         "type": "string",   "description": "Name of the agent who handled the call." },
+        { "name": "agent_extension",    "type": "string",   "description": "SIP extension of the agent." },
+        { "name": "agent_call_duration","type": "integer",  "description": "Duration of the agent leg in seconds." },
+        { "name": "agent_start_datetime","type": "date",    "description": "Timestamp when the agent joined the call." },
+        { "name": "agent_disposition.disposition",              "type": "string", "description": "Disposition label set by the agent." },
+        { "name": "agent_disposition.notes",                    "type": "string", "description": "Notes entered by the agent." },
+        { "name": "agent_disposition.custom_fields.amount",     "type": "string", "description": "Agent custom field: amount." },
+        { "name": "agent_disposition.custom_fields.callback_date_time", "type": "string", "description": "Agent custom field: callback date and time." },
+        { "name": "agent_disposition.custom_fields.follow_up_action",   "type": "string", "description": "Agent custom field: follow-up action." },
+        { "name": "agent_disposition.custom_fields.promise_date",       "type": "string", "description": "Agent custom field: promise to pay date." },
+        { "name": "agent_disposition.custom_fields.reason",             "type": "string", "description": "Agent custom field: reason." },
+        { "name": "pre_call_status.status",  "type": "string", "description": "Pre-call check status." },
+        { "name": "pre_call_status.detail",  "type": "string", "description": "Pre-call check detail message." },
+        { "name": "pre_answer_status.status","type": "string", "description": "Pre-answer SIP status." },
+        { "name": "pre_answer_status.detail","type": "string", "description": "Pre-answer SIP detail message." },
+        { "name": "screen_pop_context.step",  "type": "string", "description": "Bot step when screen pop was triggered." },
+        { "name": "screen_pop_context.reason","type": "string", "description": "Reason for screen pop." },
+        { "name": "attempts",           "type": "array",    "description": "Array of attempt objects. Each has: attempt_id (string), attempt_at (date), attempt_status (string), pre_call_status.status (string), pre_call_status.detail (string)." },
+        { "name": "channels",           "type": "array",    "description": "Array of Asterisk channel objects. Each has: role (string), uniqueid (string)." },
+        { "name": "state_history",      "type": "array",    "description": "Array of bot conversation state objects. Each has: state (string), recog_text (string — what the caller said), bot_prompt (string — what the bot said), language (string), intent (object with extracted intent fields)." },
+        { "name": "ext.city",                       "type": "string",  "description": "Extended field: contact city." },
+        { "name": "ext.language",                   "type": "string",  "description": "Extended field: language used." },
+        { "name": "ext.lead_source",                "type": "string",  "description": "Extended field: lead source." },
+        { "name": "ext.caller_intent",              "type": "string",  "description": "Extended field: caller intent detected." },
+        { "name": "ext.contact_center_transfer",    "type": "boolean", "description": "Extended field: whether call was transferred to contact center." },
+        { "name": "ext.contact_center_reason",      "type": "string",  "description": "Extended field: reason for contact center transfer." },
+        { "name": "ext.contact_center_summary",     "type": "string",  "description": "Extended field: summary for contact center agent." },
+        { "name": "ext.appointment",                "type": "string",  "description": "Extended field: appointment confirmation." },
+        { "name": "ext.appointment_date",           "type": "string",  "description": "Extended field: appointment date." },
+        { "name": "ext.appointment_slot",           "type": "string",  "description": "Extended field: appointment time slot." },
+        { "name": "ext.patient_name",               "type": "string",  "description": "Extended field: patient name." },
+        { "name": "ext.patient_age",                "type": "string",  "description": "Extended field: patient age." },
+        { "name": "ext.promise_to_pay_date",        "type": "string",  "description": "Extended field: promise to pay date." },
+        { "name": "ext.payment_tentative_date",     "type": "string",  "description": "Extended field: tentative payment date." },
+        { "name": "ext.emi_amount",                 "type": "string",  "description": "Extended field: EMI amount discussed." },
+        { "name": "ext.coupon",                     "type": "string",  "description": "Extended field: coupon code." },
+        { "name": "ext.status",                     "type": "string",  "description": "Extended field: custom status." },
+        { "name": "ext.source",                     "type": "string",  "description": "Extended field: source system." },
+        { "name": "ext.source_id",                  "type": "string",  "description": "Extended field: source record ID." },
+        { "name": "ext.lead_id",                    "type": "string",  "description": "Extended field: CRM lead ID." },
+        { "name": "ext.crm.name",                   "type": "string",  "description": "Extended field: CRM system name." },
+        { "name": "ext.crm.status",                 "type": "string",  "description": "Extended field: CRM push status." },
+        { "name": "created_at",         "type": "date",     "description": "Record creation timestamp." },
+        { "name": "updated_at",         "type": "date",     "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "scheduled_jobs",
+      "description": "Scheduled report jobs that run on a cron schedule and email results. Each job is tied to a campaign and tenant.",
+      "fields": [
+        { "name": "_id",                      "type": "objectId", "description": "Primary identifier." },
+        { "name": "name",                     "type": "string",   "description": "Job name." },
+        { "name": "description",              "type": "string",   "description": "Job description." },
+        { "name": "campaign_id",              "type": "string",   "description": "Reference to campaigns._id (stored as string)." },
+        { "name": "tenant_id",                "type": "string",   "description": "Tenant this job belongs to." },
+        { "name": "job_type",                 "type": "string",   "description": "Type of job e.g. report_email." },
+        { "name": "schedule_type",            "type": "string",   "description": "Schedule type e.g. cron, one_time." },
+        { "name": "cron_expression",          "type": "string",   "description": "Cron expression defining the schedule e.g. 0 9 * * 1-5." },
+        { "name": "timezone",                 "type": "string",   "description": "Timezone for the schedule e.g. Asia/Kolkata." },
+        { "name": "status",                   "type": "string",   "description": "Job status e.g. active, paused, disabled." },
+        { "name": "last_run_at",              "type": "date",     "description": "Timestamp of the last execution." },
+        { "name": "next_run_at",              "type": "date",     "description": "Timestamp of the next scheduled execution." },
+        { "name": "failure_email_to",         "type": "array",    "description": "Array of email addresses to notify on failure." },
+        { "name": "retry.enabled",            "type": "boolean",  "description": "Whether retry on failure is enabled." },
+        { "name": "retry.max_attempts",       "type": "integer",  "description": "Maximum retry attempts on failure." },
+        { "name": "config.email_to",          "type": "array",    "description": "Array of recipient email addresses for the report." },
+        { "name": "config.email_cc",          "type": "array",    "description": "Array of CC email addresses." },
+        { "name": "config.subject_template",  "type": "string",   "description": "Email subject template string." },
+        { "name": "config.body_intro",        "type": "string",   "description": "Introductory text in the email body." },
+        { "name": "config.template_code",     "type": "string",   "description": "Report template code to use." },
+        { "name": "config.output_format",     "type": "string",   "description": "Output format e.g. csv, xlsx." },
+        { "name": "config.attach_xlsx",       "type": "boolean",  "description": "Whether to attach an XLSX file to the email." },
+        { "name": "config.max_rows",          "type": "integer",  "description": "Maximum rows to include in the report." },
+        { "name": "config.date_range_rule",   "type": "string",   "description": "Date range rule e.g. yesterday, last_7_days." },
+        { "name": "config.columns",           "type": "array",    "description": "Array of column names to include in the report." },
+        { "name": "config.filters.campaign_id","type": "string",  "description": "Campaign filter applied to the report." },
+        { "name": "config.filters.direction", "type": "string",   "description": "Call direction filter e.g. inbound, outbound." },
+        { "name": "created_by",               "type": "string",   "description": "User ID who created the job." },
+        { "name": "updated_by",               "type": "string",   "description": "User ID who last updated the job." },
+        { "name": "created_at",               "type": "date",     "description": "Job creation timestamp." },
+        { "name": "updated_at",               "type": "date",     "description": "Last update timestamp." }
+      ]
+    },
+
+    {
+      "name": "scheduled_job_runs",
+      "description": "Execution log for each scheduled job run. Records status, timing, errors, and results of each execution.",
+      "fields": [
+        { "name": "_id",                         "type": "objectId", "description": "Primary identifier." },
+        { "name": "scheduled_job_id",            "type": "string",   "description": "Reference to scheduled_jobs._id (stored as string)." },
+        { "name": "campaign_id",                 "type": "string",   "description": "Reference to campaigns._id (stored as string)." },
+        { "name": "tenant_id",                   "type": "string",   "description": "Tenant this run belongs to." },
+        { "name": "job_type",                    "type": "string",   "description": "Type of job that was executed." },
+        { "name": "status",                      "type": "string",   "description": "Run status e.g. success, failed, running." },
+        { "name": "trigger_type",                "type": "string",   "description": "What triggered this run e.g. scheduled, manual." },
+        { "name": "attempt",                     "type": "integer",  "description": "Attempt number for this run (1 = first attempt)." },
+        { "name": "execution_ms",                "type": "integer",  "description": "Total execution time in milliseconds." },
+        { "name": "error_code",                  "type": "string",   "description": "Error code if the run failed. Null on success." },
+        { "name": "error_message",               "type": "string",   "description": "Error message if the run failed. Null on success." },
+        { "name": "scheduled_for",               "type": "date",     "description": "The time this run was scheduled for." },
+        { "name": "started_at",                  "type": "date",     "description": "Timestamp when execution started." },
+        { "name": "finished_at",                 "type": "date",     "description": "Timestamp when execution finished." },
+        { "name": "result.email_sent",           "type": "boolean",  "description": "Whether the report email was sent successfully." },
+        { "name": "result.recipient_count",      "type": "integer",  "description": "Number of email recipients." },
+        { "name": "result.row_count",            "type": "integer",  "description": "Number of data rows in the report." },
+        { "name": "result.email_message_id",     "type": "string",   "description": "Email message ID from the mail server. Null if not sent." },
+        { "name": "result.template_code",        "type": "string",   "description": "Template code used for this run." },
+        { "name": "input_snapshot.email_to",     "type": "array",    "description": "Recipient emails used for this run." },
+        { "name": "input_snapshot.email_cc",     "type": "array",    "description": "CC emails used for this run." },
+        { "name": "input_snapshot.max_rows",     "type": "integer",  "description": "Max rows setting used for this run." },
+        { "name": "input_snapshot.trigger_type", "type": "string",   "description": "Trigger type recorded at run time." },
+        { "name": "input_snapshot.filters.campaign_id", "type": "string", "description": "Campaign filter used for this run." },
+        { "name": "input_snapshot.filters.direction",   "type": "string", "description": "Direction filter used for this run." },
+        { "name": "created_at",                  "type": "date",     "description": "Run record creation timestamp." }
+      ]
+    }
+
+  ],
+
+  "relationships": [
+    { "from_field": "contacts.campaign_id",              "to_field": "campaigns._id",          "type": "reference", "description": "Contact belongs to a campaign. Use $lookup with localField: campaign_id, foreignField: _id, from: campaigns." },
+    { "from_field": "contacts.batch_id",                 "to_field": "batch_uploads.batch_id", "type": "reference", "description": "Contact belongs to a batch upload. Use $lookup with localField: batch_id, foreignField: batch_id, from: batch_uploads." },
+    { "from_field": "campaign_queue.campaign_id",        "to_field": "campaigns._id",          "type": "reference", "description": "Queue entry belongs to a campaign. Use $lookup with localField: campaign_id, foreignField: _id, from: campaigns." },
+    { "from_field": "campaign_queue.contact_id",         "to_field": "contacts._id",           "type": "reference", "description": "Queue entry references a contact. Use $lookup with localField: contact_id, foreignField: _id, from: contacts." },
+    { "from_field": "campaign_configs.campaign_id",      "to_field": "campaigns._id",          "type": "reference", "description": "Config belongs to a campaign. Use $lookup with localField: campaign_id, foreignField: _id, from: campaigns." },
+    { "from_field": "call_history.campaign_id",          "to_field": "campaigns._id",          "type": "reference", "description": "Call record belongs to a campaign. Use $lookup with localField: campaign_id, foreignField: _id, from: campaigns." },
+    { "from_field": "call_history.contact_id",           "to_field": "contacts._id",           "type": "reference", "description": "Call record references a contact. Use $lookup with localField: contact_id, foreignField: _id, from: contacts." },
+    { "from_field": "batch_uploads.campaign_id",         "to_field": "campaigns._id",          "type": "reference", "description": "Batch upload belongs to a campaign. Use $lookup with localField: campaign_id, foreignField: _id, from: campaigns." },
+    { "from_field": "contact_center_agents.user_id",     "to_field": "users._id",              "type": "reference", "description": "Agent is linked to a user. Use $lookup with localField: user_id, foreignField: _id, from: users." },
+    { "from_field": "scheduled_jobs.campaign_id",        "to_field": "campaigns._id",          "type": "reference", "description": "Scheduled job belongs to a campaign. Use $lookup with localField: campaign_id, foreignField: _id, from: campaigns." },
+    { "from_field": "scheduled_job_runs.scheduled_job_id","to_field": "scheduled_jobs._id",    "type": "reference", "description": "Run record belongs to a scheduled job. Use $lookup with localField: scheduled_job_id, foreignField: _id, from: scheduled_jobs." },
+    { "from_field": "scheduled_job_runs.campaign_id",    "to_field": "campaigns._id",          "type": "reference", "description": "Run record belongs to a campaign. Use $lookup with localField: campaign_id, foreignField: _id, from: campaigns." },
+    { "from_field": "companies.tenant_id",               "to_field": "users.tenant_id",        "type": "reference", "description": "Company is linked to users via tenant_id." },
+    { "from_field": "campaigns.tenant_id",               "to_field": "companies.tenant_id",    "type": "reference", "description": "Campaign belongs to a company via tenant_id." }
+  ]
+}
