@@ -39,27 +39,52 @@ async def ensure_collection() -> None:
 
     if exists:
         info = await client.get_collection(settings.QDRANT_COLLECTION)
-        vectors_cfg = info.config.params.vectors
+        current_dims = 0
+        for attr in ("vectors", "vectors_config"):
+            vecs = getattr(info.config.params, attr, None)
+            if vecs is None:
+                continue
+            try:
+                current_dims = vecs["dense"].size
+                break
+            except (TypeError, KeyError):
+                pass
+            try:
+                current_dims = vecs.size
+                break
+            except AttributeError:
+                pass
 
-        if isinstance(vectors_cfg, dict):
-            dense_cfg = vectors_cfg.get("dense")
-            current_dims = dense_cfg.size if dense_cfg else 0
-        else:
-            current_dims = vectors_cfg.size if vectors_cfg else 0
-
-        has_sparse = bool(getattr(info.config.params, "sparse_vectors_config", None))
-
-        if current_dims != settings.EMBEDDING_DIMENSIONS or not has_sparse:
+        if current_dims != settings.EMBEDDING_DIMENSIONS:
             logger.warning(
-                "Recreating collection '%s' (dim mismatch or missing sparse index).",
-                settings.QDRANT_COLLECTION,
+                "Recreating collection '%s' (dim mismatch: %d → %d).",
+                settings.QDRANT_COLLECTION, current_dims, settings.EMBEDDING_DIMENSIONS,
             )
             await client.delete_collection(settings.QDRANT_COLLECTION)
             exists = False
         else:
+            has_sparse = False
+            for attr in ("sparse_vectors", "sparse_vectors_config"):
+                cfg = getattr(info.config.params, attr, None) or {}
+                if "sparse" in cfg:
+                    has_sparse = True
+                    break
+
+            if not has_sparse:
+                logger.info("Adding BM25 sparse index to existing collection '%s'.", settings.QDRANT_COLLECTION)
+                try:
+                    await client.update_collection(
+                        collection_name=settings.QDRANT_COLLECTION,
+                        sparse_vectors_config={
+                            "sparse": SparseVectorParams(index=SparseIndexParams(on_disk=False))
+                        },
+                    )
+                except Exception as exc:
+                    logger.warning("Could not add sparse index: %s", exc)
+
             logger.info(
-                "Collection '%s' OK (dense=%d dims, sparse=BM25).",
-                settings.QDRANT_COLLECTION, current_dims,
+                "Collection '%s' OK (dense=%d dims, sparse=%s).",
+                settings.QDRANT_COLLECTION, current_dims, has_sparse,
             )
 
     if not exists:

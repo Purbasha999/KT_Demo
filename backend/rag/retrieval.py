@@ -14,11 +14,6 @@ async def retrieve_relevant_chunks(
     firm_id: str,
     allowed_documents: list[str] | None = None,
 ) -> list[dict]:
-    """
-    Embed the query, search Qdrant filtered to firm_id, return ranked chunks.
-    allowed_documents=["*"] or None means all docs; a specific list restricts to those filenames.
-    Returns [] on any error so it never breaks the chat pipeline.
-    """
     try:
         if allowed_documents and allowed_documents != ["*"]:
             source_filters = allowed_documents

@@ -21,9 +21,9 @@ Multi-tenant AI assistant that answers questions from a company's live database 
 | Frontend | React + Vite + Tailwind |
 | Platform DB | MySQL (firms, roles, users) |
 | Vector store | Qdrant |
-| Dense embeddings | `text-embedding-3-large` via voxomos API |
+| Dense embeddings | `text-embedding-3-large` |
 | Sparse (BM25) | `fastembed` — `Qdrant/bm25` |
-| LLM | `gpt-4o` via voxomos API |
+| LLM | `gpt-4o`|
 
 ---
 

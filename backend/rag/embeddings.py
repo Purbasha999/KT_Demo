@@ -31,7 +31,6 @@ async def _embed_one(text: str) -> list[float]:
 
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Embed a batch of document chunks via the voxomos API."""
     results = []
     for text in texts:
         results.append(await _embed_one(text))
@@ -39,6 +38,5 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
 
 
 async def embed_query(text: str) -> list[float]:
-    """Embed a single search query."""
     return await _embed_one(text)
 

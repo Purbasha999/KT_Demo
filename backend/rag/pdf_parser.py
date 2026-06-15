@@ -31,10 +31,6 @@ def _extract_text_from_pdf(file_bytes: bytes) -> list[tuple[int, str]]:
 
 
 def chunk_pdf(file_bytes: bytes, source_name: str, firm_id: str) -> list[tuple[Chunk, str]]:
-    """
-    Parse and chunk a PDF.
-    Returns list of (Chunk, chunk_id) tuples.
-    """
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.CHUNK_SIZE,
         chunk_overlap=settings.CHUNK_OVERLAP,
