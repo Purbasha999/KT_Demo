@@ -1,41 +1,44 @@
-import asyncio
+import httpx
 import logging
-from functools import lru_cache
 
-from sentence_transformers import SentenceTransformer
 from core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_BGE_QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
+_HEADERS = {
+    "Content-Type":  "application/json",
+    "Authorization": f"Token {settings.EMBEDDING_API_TOKEN}",
+}
+
+_TIMEOUT = httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0)
 
 
-@lru_cache
-def _get_model() -> SentenceTransformer:
-    logger.info("Loading embedding model '%s'…", settings.EMBEDDING_MODEL)
-    model = SentenceTransformer(settings.EMBEDDING_MODEL)
-    logger.info("Embedding model loaded.")
-    return model
+async def _embed_one(text: str) -> list[float]:
+    async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        resp = await client.post(
+            settings.EMBEDDING_API_URL,
+            json={"text": text, "model": settings.EMBEDDING_MODEL},
+            headers=_HEADERS,
+        )
+        resp.raise_for_status()
+        data = resp.json()
 
-
-def _is_bge(model_name: str) -> bool:
-    return "bge" in model_name.lower()
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return data.get("embedding") or data.get("data", [data])[0].get("embedding", [])
+    raise ValueError(f"Unexpected embedding response format: {type(data)}")
 
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
-    """Encode document chunks — no query instruction prefix."""
-    model = _get_model()
-    loop = asyncio.get_event_loop()
-    vectors = await loop.run_in_executor(
-        None,
-        lambda: model.encode(texts, normalize_embeddings=True).tolist(),
-    )
-    return vectors
+    """Embed a batch of document chunks via the voxomos API."""
+    results = []
+    for text in texts:
+        results.append(await _embed_one(text))
+    return results
 
 
 async def embed_query(text: str) -> list[float]:
-    """Encode a search query — prepends BGE instruction when using a BGE model."""
-    if _is_bge(settings.EMBEDDING_MODEL):
-        text = _BGE_QUERY_INSTRUCTION + text
-    vectors = await embed_texts([text])
-    return vectors[0]
+    """Embed a single search query."""
+    return await _embed_one(text)
+

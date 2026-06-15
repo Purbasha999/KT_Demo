@@ -5,7 +5,6 @@ from chat.service import handle_chat
 
 router = APIRouter()
 
-
 @router.post("/query", response_model=ChatResponse)
 async def chat_query(body: ChatRequest, current_user: dict = Depends(get_current_user)):
     result = await handle_chat(

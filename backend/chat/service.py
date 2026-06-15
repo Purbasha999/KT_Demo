@@ -1,15 +1,4 @@
-"""
-Chat service — full pipeline:
-  DB pipeline (Generate → Validate → Self-correct → Execute) runs in parallel
-  with RAG retrieval (embed query → vector search).
-
-Results are combined:
-  both DB rows + RAG chunks  → combined prompt
-  DB rows only               → DB prompt
-  RAG chunks only            → RAG prompt
-  DB flag + RAG chunks       → RAG prompt (question unrelated to DB but covered by docs)
-  neither                    → appropriate message
-"""
+# DB pipeline : Generate -> Validate -> Self-correct -> Execute
 
 import asyncio
 import json
@@ -117,7 +106,7 @@ async def _run_db_pipeline(
     total_attempts   = 0
     parsed_query     = None
 
-    # ── Generate → Validate loop ──────────────────────────────────────────────
+    # Generate -> Validate loop
     for attempt in range(1, MAX_GENERATE_ATTEMPTS + 1):
         total_attempts = attempt
 
@@ -165,7 +154,7 @@ async def _run_db_pipeline(
             detail="Could not generate a valid query after multiple attempts. Try rephrasing.",
         )
 
-    # ── Execute → DB-error retry loop ─────────────────────────────────────────
+    # Execute -> DB-error retry loop
     results  = None
     db_error = None
 
@@ -218,7 +207,7 @@ async def _run_db_pipeline(
 
 async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
 
-    # ── 1. Load prerequisites ─────────────────────────────────────────────────
+    # Load prerequisites
     user_role = await pdb.get_user_role(user_id)
     if not user_role:
         raise HTTPException(
@@ -230,20 +219,23 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
     if not firm:
         raise HTTPException(status_code=404, detail="Firm not found.")
 
-    db_type        = firm["db_type"]
-    allowed_tables = user_role["allowed_tables"]
-    db_config      = _build_db_config(firm)
-    schema         = await pdb.get_schema(firm_id)
+    db_type           = firm["db_type"]
+    allowed_tables    = user_role["allowed_tables"]
+    allowed_documents = user_role.get("allowed_documents", ["*"])
+    schema            = await pdb.get_schema(firm_id)
 
-    # ── 2. Start RAG retrieval in background ──────────────────────────────────
-    # Runs concurrently with the DB pipeline so latency stays low.
-    rag_task = asyncio.create_task(retrieve_relevant_chunks(question, firm_id))
+    # Start RAG retrieval in background
+    rag_task = asyncio.create_task(
+        retrieve_relevant_chunks(question, firm_id, allowed_documents)
+    )
 
-    # ── 3. DB pipeline (skipped if no schema configured) ─────────────────────
+    # DB pipeline (skipped if no schema)
     db_result = None  # None means DB was not attempted
+    has_db    = db_type not in (None, "none")
 
-    if schema:
-        tables = allowed_tables
+    if has_db and schema:
+        db_config = _build_db_config(firm)
+        tables    = allowed_tables
         if tables == ["*"]:
             tables = [t["name"] for t in schema["tables"]]
         try:
@@ -254,10 +246,9 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
             rag_task.cancel()
             raise
 
-    # ── 4. Collect RAG results ────────────────────────────────────────────────
+    # Collect RAG results and build answer
     rag_chunks = await rag_task
 
-    # ── 5. Route and build answer ─────────────────────────────────────────────
     has_db_rows = (
         db_result is not None
         and "rows" in db_result
@@ -283,7 +274,6 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
         return {"answer": answer, "rows_count": len(db_result["rows"]), "attempts": attempts}
 
     if has_rag:
-        # Covers: db flagged, db empty, or no schema — but docs are relevant
         answer = await format_response(build_rag_response_prompt(question, rag_chunks))
         return {"answer": answer, "rows_count": has_db_empty and 0 or None, "attempts": attempts}
 
@@ -297,7 +287,6 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
     if has_db_empty:
         return {"answer": "No data found for your query.", "rows_count": 0, "attempts": attempts}
 
-    # No schema, no docs
     return {
         "answer":     "No relevant information found. Please contact your admin to configure your data sources.",
         "rows_count": None,

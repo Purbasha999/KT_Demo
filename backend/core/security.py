@@ -37,7 +37,6 @@ def decrypt_value(encrypted: str) -> str:
     return get_fernet().decrypt(encrypted.encode()).decode()
 
 
-# Keep old name as alias so existing code still works
 encrypt_db_password = encrypt_value
 decrypt_db_password = decrypt_value
 

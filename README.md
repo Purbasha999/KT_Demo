@@ -1,195 +1,103 @@
-# SQL / MongoDB Knowledge Map Chatbot
+# KT Vox Demo
 
-Role-based chatbot that answers natural language questions against MySQL or MongoDB.
-No LangChain — pure orchestrated Python with a generate → validate → self-correct loop.
-
----
-
-## How it works
-
-```
-User question
-    │
-    ▼
-Prompt builder
-  Schema filtered to user's allowed tables/collections
-    │
-    ▼                                     ┌─────────────────────────┐
-LLM call ─────────────────────────────────▶ db_type = mysql         │
-  mysql   → plain SQL SELECT string        │   generate_sql()        │
-  mongodb → JSON operation dict            │   response_type: text   │
-    │                                      ├─────────────────────────┤
-    ▼                                      │ db_type = mongodb        │
-Validator                                  │   generate_mongo_query() │
-  mysql   → SELECT only, no write keywords │   response_type:         │
-  mongodb → read ops only, no $out/$merge  │     json_object          │
-    │                                      └─────────────────────────┘
-    ├── FAIL → send error to LLM, fix (up to 3 attempts)
-    │
-    ▼
-Execute on firm DB
-    ├── DB error → send to LLM, fix (up to 2 retries)
-    │
-    ▼
-Format results → natural language answer
-```
+Multi-tenant AI assistant that answers questions from a company's live database and/or uploaded PDFs.
 
 ---
 
-## Project structure
+## What it does
 
-```
-KT_VOX_DEMO/
-├── backend/
-│   ├── main.py
-│   ├── seed.py                     ← onboard firms here
-│   ├── requirements.txt
-│   ├── .env.example
-│   ├── core/
-│   │   ├── config.py               no hardcoded values — all from .env
-│   │   └── security.py             JWT · bcrypt · Fernet encrypt/decrypt
-│   ├── db/
-│   │   ├── platform_db.py          your MySQL — firms, schemas, roles, users
-│   │   └── client_db.py            aiomysql pool + motor MongoDB client
-│   ├── auth/router.py
-│   ├── admin/router.py             schema · roles · users
-│   ├── chat/
-│   │   ├── router.py
-│   │   ├── service.py              pipeline with retry loop
-│   │   ├── prompt_builder.py       separate MySQL and MongoDB prompts
-│   │   ├── sql_validator.py        read-only enforcement for both DB types
-│   │   └── llm_client.py           company proxy endpoint
-│   └── models/schemas.py
-└── frontend/
-    └── src/
-        ├── pages/ Login · Chat · Admin
-        ├── hooks/useAuth.jsx
-        └── api/client.js
-```
+- **DB chat** — translates natural language into MySQL / MongoDB queries and returns formatted answers
+- **Document chat (RAG)** — hybrid BM25 + semantic search over uploaded PDFs, fused with RRF
+- **Combined** — merges both sources automatically when both are relevant
+- **Role-based access** — per-role control over which tables and which documents a user can query
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI |
+| Frontend | React + Vite + Tailwind |
+| Platform DB | MySQL (firms, roles, users) |
+| Vector store | Qdrant |
+| Dense embeddings | `text-embedding-3-large` via voxomos API |
+| Sparse (BM25) | `fastembed` — `Qdrant/bm25` |
+| LLM | `gpt-4o` via voxomos API |
 
 ---
 
 ## Setup
 
-### 1. Platform database (your MySQL)
+### Prerequisites
+- Python 3.11+ · Node 18+ · MySQL · Docker Desktop
 
-```sql
-CREATE DATABASE KT_PLATFORM CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+### 1. Start Qdrant (one-time — auto-restarts with Docker)
+```bash
+docker run -d --name qdrant --restart always -p 6333:6333 -v qdrant_data:/qdrant/storage qdrant/qdrant
 ```
 
-Tables are auto-created on first run.
-
 ### 2. Backend
-
 ```bash
 cd backend
-cp .env.example .env
-# Fill ALL values in .env — nothing is hardcoded in config.py
-# Generate encryption key:
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements.txt
+cp .env.example .env   # fill in all values
+
+python seed.py         # creates DB, tables, firm, and admin user in one step
 uvicorn main:app --reload --port 8000
 ```
 
 ### 3. Frontend
-
 ```bash
 cd frontend && npm install && npm run dev
 ```
 
 ---
 
-## Onboarding a new firm
+## Onboarding a firm
 
-### Step 1 — Create a read-only user on the firm's DB
+Edit `FIRMS` in `seed.py` and run `python seed.py` (safe to re-run — upserts).
 
-**MySQL:**
-```sql
-CREATE USER 'chatbot_ro'@'%' IDENTIFIED BY 'strong_password';
-GRANT SELECT ON their_db.* TO 'chatbot_ro'@'%';
-FLUSH PRIVILEGES;
-```
-
-**MongoDB:**
-```javascript
-db.createUser({
-  user: "chatbot_ro",
-  pwd:  "strong_password",
-  roles: [{ role: "read", db: "their_database" }]
-})
-```
-
-### Step 2 — Add firm to seed.py and run
-
-MySQL firm:
 ```python
+# MySQL firm
 {
-    "firm_id":        "acme",
-    "firm_name":      "ACME Corp",
-    "description":    "Manufacturing company",
-    "db_type":        "mysql",
-    "db_host":        "192.168.1.100",
-    "db_port":        3306,
-    "db_name":        "acme_db",
-    "db_user":        "chatbot_ro",
-    "db_password":    "strong_password",   # plain text — script encrypts it
-    "mongo_uri":      None,
-    "admin_login":    "admin_acme",
-    "admin_password": "admin_pass",        # plain text — script hashes it
-    "admin_display":  "ACME Admin",
+    "firm_id": "acme", "firm_name": "ACME Corp", "description": "...",
+    "db_type": "mysql", "db_host": "localhost", "db_port": 3306,
+    "db_name": "acme_db", "db_user": "chatbot_ro", "db_password": "...",
+    "admin_login": "admin_acme", "admin_password": "...", "admin_display": "ACME Admin",
 }
+
+# MongoDB firm
+{ "db_type": "mongodb", "mongo_uri": "mongodb+srv://...", "db_name": "acme_db", ... }
+
+# Docs-only (no DB)
+{ "db_type": "none", ... }
 ```
-
-MongoDB firm:
-```python
-{
-    "firm_id":        "betacorp",
-    "firm_name":      "Beta Corp",
-    "description":    "E-commerce analytics",
-    "db_type":        "mongodb",
-    "db_host":        None,
-    "db_port":        None,
-    "db_name":        "betacorp_db",
-    "db_user":        None,
-    "db_password":    None,
-    "mongo_uri":      "mongodb://chatbot_ro:strong_password@192.168.1.50:27017/betacorp_db",
-    "admin_login":    "admin_beta",
-    "admin_password": "admin_pass",
-    "admin_display":  "Beta Admin",
-}
-```
-
-```bash
-cd backend && python seed.py
-```
-
-Idempotent — safe to re-run. Skips already-seeded firms and users.
-
-### Step 3 — Admin logs in and configures via app
-
-1. Log in with admin credentials
-2. **Schema tab** → upload schema JSON
-3. **Roles tab** → define roles with allowed tables/collections
-4. **Users tab** → create end users, assign roles
 
 ---
 
-## Schema JSON
+## Admin panel workflow
 
-Descriptions are important — the LLM uses them to pick the right table/collection.
+1. **Schema** — paste DB schema JSON (tables, fields, relationships)
+2. **Documents** — upload PDFs; chunked and indexed automatically
+3. **Roles** — select which tables and documents the role can access (0 or more each)
+4. **Users** — create users, assign roles
+
+---
+
+## Schema JSON format
 
 ```json
 {
   "tables": [
     {
       "name": "employees",
-      "description": "All company employees with personal and employment details",
+      "description": "All company employees",
       "fields": [
         { "name": "emp_id",    "type": "INT",     "description": "Primary key" },
-        { "name": "full_name", "type": "VARCHAR", "description": "Employee full name" },
-        { "name": "dept",      "type": "VARCHAR", "description": "Department e.g. HR, Sales" },
-        { "name": "salary",    "type": "DECIMAL", "description": "Monthly salary in INR" },
-        { "name": "joined_on", "type": "DATE",    "description": "Date joined" }
+        { "name": "full_name", "type": "VARCHAR",  "description": "Employee name" },
+        { "name": "salary",    "type": "DECIMAL",  "description": "Monthly salary in INR" }
       ]
     }
   ],
@@ -199,51 +107,42 @@ Descriptions are important — the LLM uses them to pick the right table/collect
 }
 ```
 
-For MongoDB firms, `tables` means collections and `fields` means document fields. Same format.
+For MongoDB, `tables` = collections and `fields` = document fields — same format.
 
 ---
 
-## firms table structure
+## Key `.env` values
 
-| Field        | MySQL firm | MongoDB firm |
-|--------------|------------|--------------|
-| firm_id      | ✓          | ✓            |
-| firm_name    | ✓          | ✓            |
-| description  | ✓          | ✓            |
-| db_type      | "mysql"    | "mongodb"    |
-| db_host      | ✓          | NULL         |
-| db_port      | ✓          | NULL         |
-| db_name      | ✓          | ✓            |
-| db_user      | ✓          | NULL         |
-| db_password  | ✓ (enc)    | NULL         |
-| mongo_uri    | NULL       | ✓ (enc)      |
-
-Both `db_password` (MySQL) and `mongo_uri` (MongoDB) are Fernet-encrypted before storage.
+```
+RAG_TOP_K=8               # chunks retrieved per query
+CHUNK_SIZE=500
+CHUNK_OVERLAP=150
+MAX_UPLOAD_SIZE_MB=50
+```
 
 ---
 
-## API reference
+## API
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/auth/firms` | none | Firm list for login dropdown |
-| POST | `/auth/login` | none | Login → JWT |
-| POST | `/admin/schema` | admin | Upload schema |
-| GET | `/admin/schema` | admin | Get schema |
-| POST | `/admin/role` | admin | Create/update role |
+| GET | `/auth/firms` | — | Firm list for login |
+| POST | `/auth/login` | — | Login → JWT |
+| POST | `/admin/schema` | admin | Upload DB schema |
+| POST | `/admin/role` | admin | Create / update role |
 | GET | `/admin/roles` | admin | List roles |
-| DELETE | `/admin/role/{id}` | admin | Delete role |
-| POST | `/admin/user` | admin | Create end user |
-| GET | `/admin/users` | admin | List users |
-| POST | `/admin/user/assign-role` | admin | Assign role |
-| POST | `/chat/query` | user | Ask question → answer |
+| POST | `/admin/user` | admin | Create user |
+| POST | `/admin/documents/upload` | admin | Upload PDF |
+| GET | `/admin/documents` | admin | List documents |
+| DELETE | `/admin/documents/{filename}` | admin | Delete document |
+| POST | `/chat/query` | user | Ask a question |
 
 ---
 
 ## Security
 
-- Read-only enforced at two levels: DB user permissions + app-level validator
-- Schema sent to LLM is filtered to role's allowed tables — LLM never sees the rest
-- All DB credentials (MySQL password, MongoDB URI) encrypted with Fernet before storage
-- JWT scoped to firm_id — users cannot reach another firm's data
-- No LangChain or agent framework — full control over every step
+- DB credentials (MySQL password, MongoDB URI) encrypted with Fernet before storage
+- Schema sent to LLM filtered to the user's allowed tables only
+- JWT scoped to `firm_id` — users cannot reach another firm's data
+- Qdrant queries hard-filtered by `firm_id` payload — cross-firm data leakage impossible
+- Read-only enforced at two levels: DB user permissions + app-level query validator

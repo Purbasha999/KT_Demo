@@ -5,12 +5,19 @@ from qdrant_client import AsyncQdrantClient
 from qdrant_client.models import (
     Distance,
     VectorParams,
+    SparseVectorParams,
+    SparseIndexParams,
+    SparseVector,
     PointStruct,
     Filter,
     FieldCondition,
     MatchValue,
+    MatchAny,
     FilterSelector,
     ScoredPoint,
+    Prefetch,
+    FusionQuery,
+    Fusion,
 )
 from core.config import settings
 
@@ -32,26 +39,47 @@ async def ensure_collection() -> None:
 
     if exists:
         info = await client.get_collection(settings.QDRANT_COLLECTION)
-        current_dims = info.config.params.vectors.size
-        if current_dims != settings.EMBEDDING_DIMENSIONS:
+        vectors_cfg = info.config.params.vectors
+
+        if isinstance(vectors_cfg, dict):
+            dense_cfg = vectors_cfg.get("dense")
+            current_dims = dense_cfg.size if dense_cfg else 0
+        else:
+            current_dims = vectors_cfg.size if vectors_cfg else 0
+
+        has_sparse = bool(getattr(info.config.params, "sparse_vectors_config", None))
+
+        if current_dims != settings.EMBEDDING_DIMENSIONS or not has_sparse:
             logger.warning(
-                "Recreating collection '%s' (dim mismatch: %d → %d).",
-                settings.QDRANT_COLLECTION, current_dims, settings.EMBEDDING_DIMENSIONS,
+                "Recreating collection '%s' (dim mismatch or missing sparse index).",
+                settings.QDRANT_COLLECTION,
             )
             await client.delete_collection(settings.QDRANT_COLLECTION)
             exists = False
         else:
-            logger.info("Collection '%s' OK (dims=%d).", settings.QDRANT_COLLECTION, current_dims)
+            logger.info(
+                "Collection '%s' OK (dense=%d dims, sparse=BM25).",
+                settings.QDRANT_COLLECTION, current_dims,
+            )
 
     if not exists:
-        logger.info("Creating collection '%s' (dims=%d, metric=COSINE).",
-                    settings.QDRANT_COLLECTION, settings.EMBEDDING_DIMENSIONS)
+        logger.info(
+            "Creating collection '%s' (dense=%d dims + BM25 sparse).",
+            settings.QDRANT_COLLECTION, settings.EMBEDDING_DIMENSIONS,
+        )
         await client.create_collection(
             collection_name=settings.QDRANT_COLLECTION,
-            vectors_config=VectorParams(
-                size=settings.EMBEDDING_DIMENSIONS,
-                distance=Distance.COSINE,
-            ),
+            vectors_config={
+                "dense": VectorParams(
+                    size=settings.EMBEDDING_DIMENSIONS,
+                    distance=Distance.COSINE,
+                )
+            },
+            sparse_vectors_config={
+                "sparse": SparseVectorParams(
+                    index=SparseIndexParams(on_disk=False)
+                )
+            },
         )
 
 
@@ -66,28 +94,34 @@ async def upsert_points(points: list[PointStruct]) -> None:
 
 
 async def search(
-    query_vector: list[float],
+    dense_vector: list[float],
+    sparse_vector: SparseVector,
     firm_id: str,
     top_k: int,
-    score_threshold: float,
-    source_filter: str | None = None,
+    source_filters: list[str] | None = None,
 ) -> list[ScoredPoint]:
     client = get_qdrant_client()
 
     must_conditions = [
         FieldCondition(key="firm_id", match=MatchValue(value=firm_id))
     ]
-    if source_filter:
+    if source_filters:
         must_conditions.append(
-            FieldCondition(key="source", match=MatchValue(value=source_filter))
+            FieldCondition(key="source", match=MatchValue(value=source_filters[0]))
+            if len(source_filters) == 1
+            else FieldCondition(key="source", match=MatchAny(any=source_filters))
         )
+
+    query_filter = Filter(must=must_conditions)
 
     results = await client.query_points(
         collection_name=settings.QDRANT_COLLECTION,
-        query=query_vector,
+        prefetch=[
+            Prefetch(query=dense_vector,  using="dense",  limit=top_k * 2, filter=query_filter),
+            Prefetch(query=sparse_vector, using="sparse", limit=top_k * 2, filter=query_filter),
+        ],
+        query=FusionQuery(fusion=Fusion.RRF),
         limit=top_k,
-        score_threshold=score_threshold,
-        query_filter=Filter(must=must_conditions),
         with_payload=True,
     )
     return results.points

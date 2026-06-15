@@ -45,8 +45,7 @@ class SchemaUploadRequest(BaseModel):
     model_config = {"extra": "ignore"}  # drops "company" and "roles" keys silently
 
 
-# ── Auth ──
-
+# Auth
 class LoginRequest(BaseModel):
     firm_id:  str
     login_id: str
@@ -61,31 +60,30 @@ class TokenResponse(BaseModel):
     firm_id:      str
 
 
-# ── Firm ──
-
+# Firm
 class FirmListItem(BaseModel):
     firm_id:     str
     firm_name:   str
     description: Optional[str] = ""
 
 
-# ── Roles ───
-
+# Roles
 class RoleCreateRequest(BaseModel):
-    role_name:      str
-    allowed_tables: list[str]
-    row_filters:    Optional[dict] = {}
+    role_name:         str
+    allowed_tables:    list[str]
+    allowed_documents: list[str] = ["*"]
+    row_filters:       Optional[dict] = {}
 
 
 class RoleResponse(BaseModel):
-    role_id:        int
-    role_name:      str
-    allowed_tables: list[str]
-    row_filters:    Optional[dict]
+    role_id:           int
+    role_name:         str
+    allowed_tables:    list[str]
+    allowed_documents: list[str] = ["*"]
+    row_filters:       Optional[dict]
 
 
-# ── Users ───
-
+# Users
 class UserCreateRequest(BaseModel):
     login_id:     str
     password:     str
@@ -106,8 +104,7 @@ class UserListItem(BaseModel):
     role_id:      Optional[int]
 
 
-# ── Chat ───
-
+# Chat
 class ChatRequest(BaseModel):
     question: str
 
@@ -118,8 +115,7 @@ class ChatResponse(BaseModel):
     attempts:   Optional[int] = None
 
 
-# ── Documents ──
-
+# Documents
 class DocumentUploadResponse(BaseModel):
     filename:        str
     chunks_ingested: int

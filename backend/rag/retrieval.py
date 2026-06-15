@@ -1,7 +1,9 @@
+import asyncio
 import logging
 
 from core.config import settings
 from rag.embeddings import embed_query
+from rag.sparse_embeddings import embed_sparse_query
 from rag.vector_store import search, list_sources_for_firm
 
 logger = logging.getLogger(__name__)
@@ -10,20 +12,29 @@ logger = logging.getLogger(__name__)
 async def retrieve_relevant_chunks(
     query: str,
     firm_id: str,
-    source_filter: str | None = None,
+    allowed_documents: list[str] | None = None,
 ) -> list[dict]:
     """
     Embed the query, search Qdrant filtered to firm_id, return ranked chunks.
+    allowed_documents=["*"] or None means all docs; a specific list restricts to those filenames.
     Returns [] on any error so it never breaks the chat pipeline.
     """
     try:
-        query_vector = await embed_query(query)
+        if allowed_documents and allowed_documents != ["*"]:
+            source_filters = allowed_documents
+        else:
+            source_filters = None
+
+        dense_vector, sparse_vector = await asyncio.gather(
+            embed_query(query),
+            embed_sparse_query(query),
+        )
         results = await search(
-            query_vector=query_vector,
+            dense_vector=dense_vector,
+            sparse_vector=sparse_vector,
             firm_id=firm_id,
             top_k=settings.RAG_TOP_K,
-            score_threshold=settings.RAG_SCORE_THRESHOLD,
-            source_filter=source_filter,
+            source_filters=source_filters,
         )
 
         chunks = [

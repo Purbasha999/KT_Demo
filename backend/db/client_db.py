@@ -1,12 +1,3 @@
-"""
-Client DB executor — supports MySQL (aiomysql) and MongoDB (motor).
-
-MySQL  : takes host/port/db_name/user/password
-MongoDB: takes a full connection string (mongo_uri) + db_name
-
-Both always return list[dict] to the caller.
-"""
-
 import aiomysql
 import motor.motor_asyncio as motor
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
@@ -14,8 +5,7 @@ from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
 _mysql_pools: dict[str, aiomysql.Pool] = {}
 
 
-# ── MySQL ─────────────────────────────────────────────────────────────────────
-
+# MySQL
 async def _get_mysql_pool(firm_id: str, db_config: dict) -> aiomysql.Pool:
     if firm_id not in _mysql_pools:
         _mysql_pools[firm_id] = await aiomysql.create_pool(
@@ -42,8 +32,7 @@ async def _execute_mysql(firm_id: str, db_config: dict,
             return [_sanitise(r) for r in await cur.fetchall()]
 
 
-# ── MongoDB ───────────────────────────────────────────────────────────────────
-
+# MongoDB
 def _clean_mongo_uri(mongo_uri: str) -> str:
     """
     Strip problematic query parameters (e.g. appName) from the URI
@@ -149,7 +138,6 @@ async def _execute_mongo(firm_id: str, db_config: dict,
     collection   = db[operation["collection"]]
     op           = operation.get("operation", "find").lower()
 
-    # Enforce limit — LLM sometimes returns 0 which returns nothing
     raw_limit = operation.get("limit", 100)
     limit     = max(1, min(int(raw_limit) if raw_limit else 100, 500))
 
@@ -179,8 +167,7 @@ async def _execute_mongo(firm_id: str, db_config: dict,
     return [_sanitise(r) for r in rows]
 
 
-# ── Connection test ───────────────────────────────────────────────────────────
-
+# Connection test
 async def test_connection(db_type: str, db_config: dict) -> tuple[bool, str]:
     try:
         if db_type == "mongodb":
@@ -202,8 +189,7 @@ async def test_connection(db_type: str, db_config: dict) -> tuple[bool, str]:
         return False, str(e)
 
 
-# ── Unified executor ──────────────────────────────────────────────────────────
-
+# Execute query
 async def execute_query(firm_id: str, db_type: str,
                          db_config: dict, query) -> list[dict]:
     """
@@ -216,8 +202,7 @@ async def execute_query(firm_id: str, db_type: str,
     return await _execute_mysql(firm_id, db_config, query)
 
 
-# ── Cleanup ───────────────────────────────────────────────────────────────────
-
+# Cleanup
 async def close_all_pools():
     for pool in _mysql_pools.values():
         pool.close()
@@ -225,8 +210,7 @@ async def close_all_pools():
     _mysql_pools.clear()
 
 
-# ── Helper ────────────────────────────────────────────────────────────────────
-
+# Helper
 def _sanitise(row: dict) -> dict:
     """Convert non-JSON-serialisable types so results can be sent to the LLM."""
     import decimal

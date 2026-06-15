@@ -7,7 +7,6 @@ from pypdf import PdfReader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from core.config import settings
 
-
 @dataclass
 class Chunk:
     text: str

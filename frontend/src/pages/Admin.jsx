@@ -92,33 +92,67 @@ function SchemaTab({ notify }) {
 }
 
 // ── Roles tab ──────────────────────────────────────────────────────────────
+function CheckboxGroup({ label, allLabel, items, allChecked, selected, onToggleAll, onToggle, emptyMsg }) {
+  return (
+    <div>
+      <label className="text-xs text-gray-500 mb-2 block">{label}</label>
+      <label className="flex items-center gap-2 text-sm text-gray-700 mb-2 cursor-pointer select-none">
+        <input type="checkbox" checked={allChecked}
+          onChange={(e) => onToggleAll(e.target.checked)}
+          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+        {allLabel}
+      </label>
+      {!allChecked && items.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pl-1">
+          {items.map((item) => (
+            <label key={item} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+              <input type="checkbox" checked={selected.includes(item)}
+                onChange={() => onToggle(item)}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              {item}
+            </label>
+          ))}
+        </div>
+      )}
+      {!allChecked && items.length === 0 && (
+        <p className="text-xs text-gray-400 pl-1">{emptyMsg}</p>
+      )}
+    </div>
+  );
+}
+
 function RolesTab({ notify, onRolesChange }) {
-  const [roles, setRoles]             = useState([]);
-  const [name, setName]               = useState("");
-  const [allTables, setAllTables]     = useState(false);
-  const [selected, setSelected]       = useState([]);
+  const [roles, setRoles]               = useState([]);
+  const [name, setName]                 = useState("");
+  const [allTables, setAllTables]       = useState(false);
+  const [selTables, setSelTables]       = useState([]);
+  const [allDocs, setAllDocs]           = useState(true);
+  const [selDocs, setSelDocs]           = useState([]);
   const [schemaTables, setSchemaTables] = useState([]);
-  const [loading, setLoading]         = useState(false);
+  const [docList, setDocList]           = useState([]);
+  const [loading, setLoading]           = useState(false);
 
   const load = () => getRoles().then((r) => { setRoles(r); onRolesChange(r); }).catch(() => {});
 
   useEffect(() => {
     load();
-    getSchema()
-      .then((s) => setSchemaTables((s.tables || []).map((t) => t.name)))
-      .catch(() => {});
+    getSchema().then((s) => setSchemaTables((s.tables || []).map((t) => t.name))).catch(() => {});
+    getDocuments().then((d) => setDocList(d.map((doc) => doc.filename))).catch(() => {});
   }, []);
 
-  const toggleTable = (t) =>
-    setSelected((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
+  const toggleTable = (t) => setSelTables((p) => p.includes(t) ? p.filter((x) => x !== t) : [...p, t]);
+  const toggleDoc   = (d) => setSelDocs((p)   => p.includes(d) ? p.filter((x) => x !== d) : [...p, d]);
 
   const save = async () => {
     setLoading(true);
     try {
-      const allowed = allTables ? ["*"] : selected;
-      await createRole({ role_name: name, allowed_tables: allowed });
+      await createRole({
+        role_name:         name,
+        allowed_tables:    allTables ? ["*"] : selTables,
+        allowed_documents: allDocs   ? ["*"] : selDocs,
+      });
       notify(`Role "${name}" saved`, "success");
-      setName(""); setSelected([]); setAllTables(false);
+      setName(""); setSelTables([]); setAllTables(false); setSelDocs([]); setAllDocs(true);
       load();
     } catch (e) {
       notify(e.response?.data?.detail || "Failed to save role", "error");
@@ -127,52 +161,44 @@ function RolesTab({ notify, onRolesChange }) {
     }
   };
 
-  const canSave = name && (allTables || selected.length > 0);
+  const canSave = !!name;
 
   return (
     <div className="space-y-6">
-      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">Create / update role</h3>
-        <div className="mb-3">
+      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 space-y-4">
+        <h3 className="text-sm font-medium text-gray-700">Create / update role</h3>
+
+        <div>
           <label className="text-xs text-gray-500 mb-1 block">Role name</label>
           <input value={name} onChange={(e) => setName(e.target.value)}
             className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             placeholder="e.g. CEO, HR Head" />
         </div>
 
-        <div>
-          <label className="text-xs text-gray-500 mb-2 block">Allowed tables</label>
-          <label className="flex items-center gap-2 text-sm text-gray-700 mb-3 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={allTables}
-              onChange={(e) => { setAllTables(e.target.checked); setSelected([]); }}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            All tables (*)
-          </label>
-          {!allTables && schemaTables.length > 0 && (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {schemaTables.map((t) => (
-                <label key={t} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(t)}
-                    onChange={() => toggleTable(t)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  {t}
-                </label>
-              ))}
-            </div>
-          )}
-          {!allTables && schemaTables.length === 0 && (
-            <p className="text-xs text-gray-400">Upload a schema first to see available tables.</p>
-          )}
-        </div>
+        <CheckboxGroup
+          label="Allowed tables"
+          allLabel="All tables (*)"
+          items={schemaTables}
+          allChecked={allTables}
+          selected={selTables}
+          onToggleAll={(v) => { setAllTables(v); setSelTables([]); }}
+          onToggle={toggleTable}
+          emptyMsg="Upload a schema first to see available tables."
+        />
+
+        <CheckboxGroup
+          label="Allowed documents"
+          allLabel="All documents (*)"
+          items={docList}
+          allChecked={allDocs}
+          selected={selDocs}
+          onToggleAll={(v) => { setAllDocs(v); setSelDocs([]); }}
+          onToggle={toggleDoc}
+          emptyMsg="Upload PDFs first to restrict document access."
+        />
 
         <button onClick={save} disabled={loading || !canSave}
-          className="mt-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
           {loading ? "Saving…" : "Save role"}
         </button>
       </div>
@@ -181,20 +207,24 @@ function RolesTab({ notify, onRolesChange }) {
         <thead>
           <tr className="border-b border-gray-200">
             <th className="text-left pb-2 text-gray-500 font-medium">Role</th>
-            <th className="text-left pb-2 text-gray-500 font-medium">Allowed tables</th>
+            <th className="text-left pb-2 text-gray-500 font-medium">Tables</th>
+            <th className="text-left pb-2 text-gray-500 font-medium">Documents</th>
           </tr>
         </thead>
         <tbody>
           {roles.map((r) => (
             <tr key={r.role_id} className="border-b border-gray-100">
               <td className="py-2 font-medium text-gray-700">{r.role_name}</td>
-              <td className="py-2 text-gray-500">
+              <td className="py-2 text-gray-500 text-xs">
                 {Array.isArray(r.allowed_tables) ? r.allowed_tables.join(", ") : r.allowed_tables}
+              </td>
+              <td className="py-2 text-gray-500 text-xs">
+                {Array.isArray(r.allowed_documents) ? r.allowed_documents.join(", ") : (r.allowed_documents || "*")}
               </td>
             </tr>
           ))}
           {roles.length === 0 && (
-            <tr><td colSpan={2} className="py-4 text-gray-400 text-center">No roles yet</td></tr>
+            <tr><td colSpan={3} className="py-4 text-gray-400 text-center">No roles yet</td></tr>
           )}
         </tbody>
       </table>

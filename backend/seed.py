@@ -1,16 +1,9 @@
 """
-Seed script — run once per new firm onboarding.
-
-Usage:
-    python seed.py
-
-Edit the FIRMS list below with plain text values.
-The script handles all bcrypt hashing and Fernet encryption before writing to DB.
+Seed script — run to onboard or update firms. Re-running is safe (upsert).
 
 db_type = "mysql"   → provide db_host, db_port, db_name, db_user, db_password
 db_type = "mongodb" → provide mongo_uri and db_name
-                      format: "mongodb://user:password@host:27017"
-                      Atlas:  "mongodb+srv://user:password@cluster.mongodb.net"
+db_type = "none"    → docs-only firm (RAG only, no DB) — omit all DB fields
 """
 
 import asyncio
@@ -18,43 +11,94 @@ import uuid
 
 FIRMS = [
     {
-        "firm_id":        "flywise",
-        "firm_name":      "FlyWise",
-        "description":    "Flyise is a ticket booking company that helps customers find and book flights. They have a large database of flight information and customer bookings.",
+        "firm_id":        "receiptor",
+        "firm_name":      "Receiptor",
+        "description":    "Analyses receipts and invoices for hotels, restaurants, cafes, etc for expense management",
         "db_type":        "mongodb",
-        "db_host":        None,
-        "db_port":        None,
         "db_name":        "test",
-        "db_user":        None,
-        "db_password":    None,
-        "mongo_uri":      "mongodb+srv://db_user:flywise_password@cluster0.mfcfgi4.mongodb.net/?appName=Cluster0",
-        "admin_login":    "admin_flywise",
-        "admin_password": "flywise_admin_pass",
-        "admin_display":  "FlyWise Admin",
-
-
-        # voxomos - Voxomos is an enterprise AI company focused on building human-like conversational AI agents for businesses. They build various campaigns for their clients and then run them in batches
-        # "mongodb+srv://kt_demo_db_user:kt_demo_db_user_password@voxbot-cluster.hqja0mr.mongodb.net/?appName=Voxbot-cluster"
-
-        # "firm_id":        "acme",
-        # "firm_name":      "ACME Corp",
-        # "description":    "Manufacturing and supply chain company",
-        # "db_type":        "mysql",
-        # "db_host":        "localhost",
-        # "db_port":        3306,
-        # "db_name":        "acme_corp",
-        # "db_user":        "root",
-        # "db_password":    "",
-        # "mongo_uri":      None,
-        # "admin_login":    "admin_acme",
-        # "admin_password": "acme_admin_pass",
-        # "admin_display":  "ACME Admin",
+        "mongo_uri":      "",
+        "admin_login":    "admin_receiptor",
+        "admin_password": "receiptor_admin_pass",
+        "admin_display":  "Receiptor Admin",
     },
+
+    # Docs-only example (no DB credentials needed):
+    # {
+    #     "firm_id":        "acme_docs",
+    #     "firm_name":      "ACME Docs",
+    #     "description":    "Knowledge base only — no live DB",
+    #     "admin_login":    "admin_acme",
+    #     "admin_password": "acme_admin_pass",
+    #     "admin_display":  "ACME Admin",
+    # },
+
+    # MySQL example:
+    # {
+    #     "firm_id":        "acme",
+    #     "firm_name":      "ACME Corp",
+    #     "description":    "Manufacturing and supply chain company",
+    #     "db_type":        "mysql",
+    #     "db_host":        "localhost",
+    #     "db_port":        3306,
+    #     "db_name":        "acme_corp",
+    #     "db_user":        "root",
+    #     "db_password":    "",
+    #     "admin_login":    "admin_acme",
+    #     "admin_password": "acme_admin_pass",
+    #     "admin_display":  "ACME Admin",
+    # },
 ]
 
 
+async def _upsert_firm(pdb, firm, encrypt_value):
+    firm_id  = firm["firm_id"]
+    db_type  = firm.get("db_type", "none")
+
+    enc_password  = encrypt_value(firm["db_password"]) if firm.get("db_password") else None
+    enc_mongo_uri = encrypt_value(firm["mongo_uri"])   if firm.get("mongo_uri")   else None
+
+    existing = await pdb.get_firm(firm_id)
+    if existing:
+        # Update credentials and metadata in place
+        async with pdb._pool.acquire() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(
+                    """UPDATE firms
+                       SET firm_name=%s, description=%s, db_type=%s,
+                           db_host=%s, db_port=%s, db_name=%s, db_user=%s,
+                           db_password=%s, mongo_uri=%s
+                       WHERE firm_id=%s""",
+                    (
+                        firm["firm_name"],
+                        firm.get("description", ""),
+                        db_type,
+                        firm.get("db_host"),
+                        firm.get("db_port"),
+                        firm.get("db_name"),
+                        firm.get("db_user"),
+                        enc_password,
+                        enc_mongo_uri,
+                        firm_id,
+                    ),
+                )
+        print(f"   [UPDATED] Firm credentials/metadata refreshed.")
+    else:
+        await pdb.create_firm(
+            firm_id         = firm_id,
+            firm_name       = firm["firm_name"],
+            description     = firm.get("description", ""),
+            db_type         = db_type,
+            db_host         = firm.get("db_host"),
+            db_port         = firm.get("db_port"),
+            db_name         = firm.get("db_name"),
+            db_user         = firm.get("db_user"),
+            db_password_enc = enc_password,
+            mongo_uri_enc   = enc_mongo_uri,
+        )
+        print(f"   [CREATED] Firm added.")
+
+
 async def run():
-    from core.config import settings
     from core.security import hash_password, encrypt_value
     import db.platform_db as pdb
 
@@ -63,35 +107,14 @@ async def run():
 
     for firm in FIRMS:
         firm_id = firm["firm_id"]
-        print(f"\n── {firm_id}  ({firm['firm_name']})  [{firm['db_type']}] ──")
+        db_type = firm.get("db_type", "none")
+        print(f"\n── {firm_id}  ({firm['firm_name']})  [{db_type}] ──")
 
-        # ── Firm ──────────────────────────────────────────────────────────────
-        existing = await pdb.get_firm(firm_id)
-        if existing:
-            print(f"   [SKIP] Firm already exists.")
-        else:
-            # Encrypt whichever credential is present
-            enc_password  = encrypt_value(firm["db_password"]) if firm.get("db_password") else None
-            enc_mongo_uri = encrypt_value(firm["mongo_uri"])   if firm.get("mongo_uri")   else None
+        await _upsert_firm(pdb, firm, encrypt_value)
 
-            await pdb.create_firm(
-                firm_id         = firm_id,
-                firm_name       = firm["firm_name"],
-                description     = firm.get("description", ""),
-                db_type         = firm["db_type"],
-                db_host         = firm.get("db_host"),
-                db_port         = firm.get("db_port"),
-                db_name         = firm.get("db_name"),
-                db_user         = firm.get("db_user"),
-                db_password_enc = enc_password,
-                mongo_uri_enc   = enc_mongo_uri,
-            )
-            print(f"   [OK]  Firm created.")
-
-        # ── Admin user ────────────────────────────────────────────────────────
         existing_user = await pdb.get_user_by_login(firm_id, firm["admin_login"])
         if existing_user:
-            print(f"   [SKIP] Admin '{firm['admin_login']}' already exists.")
+            print(f"   [SKIP]    Admin '{firm['admin_login']}' already exists.")
         else:
             await pdb.create_user(
                 user_id       = str(uuid.uuid4()),
@@ -101,10 +124,10 @@ async def run():
                 display_name  = firm["admin_display"],
                 is_admin      = True,
             )
-            print(f"   [OK]  Admin created → login: '{firm['admin_login']}'")
+            print(f"   [CREATED] Admin → login: '{firm['admin_login']}'")
 
     await pdb.close_db()
-    print("\nDone. Admins can now log in and configure schema, roles, and users.")
+    print("\nDone.")
 
 
 if __name__ == "__main__":

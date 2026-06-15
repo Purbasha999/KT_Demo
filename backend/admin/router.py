@@ -18,7 +18,6 @@ router = APIRouter(dependencies=[Depends(require_admin)])
 
 
 # Schema 
-
 @router.post("/schema")
 async def upload_schema(body: SchemaUploadRequest, admin=Depends(require_admin)):
     firm_id = admin["firm_id"]
@@ -39,10 +38,8 @@ async def get_schema(admin=Depends(require_admin)):
 async def create_role(body: RoleCreateRequest, admin=Depends(require_admin)):
     firm_id = admin["firm_id"]
     schema  = await pdb.get_schema(firm_id)
-    if not schema:
-        raise HTTPException(status_code=400, detail="Upload your schema before creating roles.")
 
-    if body.allowed_tables != ["*"]:
+    if schema and body.allowed_tables not in (["*"], []):
         valid   = {t["name"] for t in schema["tables"]}
         invalid = [t for t in body.allowed_tables if t not in valid]
         if invalid:
@@ -52,11 +49,14 @@ async def create_role(body: RoleCreateRequest, admin=Depends(require_admin)):
             )
 
     role_id = await pdb.create_or_update_role(
-        firm_id, body.role_name, body.allowed_tables, body.row_filters
+        firm_id, body.role_name, body.allowed_tables,
+        body.allowed_documents, body.row_filters,
     )
     return RoleResponse(
         role_id=role_id, role_name=body.role_name,
-        allowed_tables=body.allowed_tables, row_filters=body.row_filters,
+        allowed_tables=body.allowed_tables,
+        allowed_documents=body.allowed_documents,
+        row_filters=body.row_filters,
     )
 
 
@@ -104,7 +104,6 @@ async def assign_role(body: UserRoleAssignRequest, admin=Depends(require_admin))
 
 
 # Documents 
-
 @router.post("/documents/upload", response_model=DocumentUploadResponse, status_code=201)
 async def upload_document(
     file: UploadFile = File(...),

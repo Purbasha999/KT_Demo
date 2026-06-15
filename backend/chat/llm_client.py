@@ -1,14 +1,5 @@
-"""
-LLM client — calls the company's proxy endpoint.
-
-generate_sql()         → MySQL: LLM returns plain SQL SELECT string
-generate_mongo_query() → MongoDB: LLM returns JSON operation dict
-format_response()      → both: LLM returns natural language answer
-"""
-
 import httpx
 from core.config import settings
-
 
 async def _call(prompt: str, max_tokens: int, response_type: str) -> str:
     payload = {
@@ -23,8 +14,6 @@ async def _call(prompt: str, max_tokens: int, response_type: str) -> str:
         "Content-Type":  "application/json",
         "Authorization": f"Token {settings.LLM_API_TOKEN}",
     }
-
-    # Increase connect and read timeouts separately
     timeout = httpx.Timeout(
         connect=10.0,   # 10s to establish connection
         read=60.0,      # 60s to wait for response

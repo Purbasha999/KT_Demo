@@ -5,7 +5,6 @@ import db.platform_db as pdb
 
 router = APIRouter()
 
-
 @router.get("/firms", response_model=list[FirmListItem])
 async def list_firms():
     return await pdb.get_all_firms()

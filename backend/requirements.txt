@@ -14,5 +14,6 @@ python-dotenv
 python-multipart
 sentence-transformers
 qdrant-client>=1.10.0
+fastembed>=0.3.0
 pypdf>=4.3.0
 langchain-text-splitters>=0.2.0

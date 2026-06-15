@@ -1,11 +1,3 @@
-"""
-Platform DB — your own MySQL instance.
-Stores: firms, schemas, roles, users.
-
-Firm DB credentials stored here are always encrypted.
-MySQL fields and mongo_uri are all optional — only one DB type is required per firm.
-"""
-
 import aiomysql
 import json
 from typing import Optional
@@ -13,9 +5,27 @@ from core.config import settings
 
 _pool: Optional[aiomysql.Pool] = None
 
+async def _ensure_database():
+    """Create the platform database if it doesn't exist."""
+    conn = await aiomysql.connect(
+        host=settings.PLATFORM_DB_HOST,
+        port=settings.PLATFORM_DB_PORT,
+        user=settings.PLATFORM_DB_USER,
+        password=settings.PLATFORM_DB_PASSWORD,
+        autocommit=True,
+        charset="utf8mb4",
+    )
+    async with conn.cursor() as cur:
+        await cur.execute(
+            f"CREATE DATABASE IF NOT EXISTS `{settings.PLATFORM_DB_NAME}` "
+            f"CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+        )
+    conn.close()
+
 
 async def init_db():
     global _pool
+    await _ensure_database()
     _pool = await aiomysql.create_pool(
         host=settings.PLATFORM_DB_HOST,
         port=settings.PLATFORM_DB_PORT,
@@ -39,13 +49,12 @@ async def close_db():
 
 async def _create_tables():
     statements = [
-        # firms — all DB credential fields nullable; only one set required per db_type
         """
         CREATE TABLE IF NOT EXISTS firms (
             firm_id       VARCHAR(50)  PRIMARY KEY,
             firm_name     VARCHAR(100) NOT NULL,
             description   TEXT,
-            db_type       ENUM('mysql','mongodb') NOT NULL,
+            db_type       ENUM('mysql','mongodb','none') NOT NULL DEFAULT 'none',
             -- MySQL fields (required when db_type = 'mysql')
             db_host       VARCHAR(200),
             db_port       INT,
@@ -67,11 +76,12 @@ async def _create_tables():
         """,
         """
         CREATE TABLE IF NOT EXISTS roles (
-            role_id        INT AUTO_INCREMENT PRIMARY KEY,
-            firm_id        VARCHAR(50)  NOT NULL,
-            role_name      VARCHAR(100) NOT NULL,
-            allowed_tables JSON NOT NULL,
-            row_filters    JSON,
+            role_id           INT AUTO_INCREMENT PRIMARY KEY,
+            firm_id           VARCHAR(50)  NOT NULL,
+            role_name         VARCHAR(100) NOT NULL,
+            allowed_tables    JSON NOT NULL,
+            allowed_documents JSON NOT NULL DEFAULT ('["*"]'),
+            row_filters       JSON,
             UNIQUE KEY uq_firm_role (firm_id, role_name),
             FOREIGN KEY (firm_id) REFERENCES firms(firm_id) ON DELETE CASCADE
         )
@@ -121,6 +131,8 @@ async def _migrate():
     """Idempotent column additions for existing installations."""
     migrations = [
         "ALTER TABLE firm_documents ADD COLUMN description TEXT",
+        "ALTER TABLE roles ADD COLUMN allowed_documents JSON NOT NULL DEFAULT (JSON_ARRAY('*'))",
+        "ALTER TABLE firms MODIFY COLUMN db_type ENUM('mysql','mongodb','none') NOT NULL DEFAULT 'none'",
     ]
     async with _pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -131,8 +143,7 @@ async def _migrate():
                     pass  # column already exists
 
 
-# ── Firm ─────────────────────────────────────────────────────────────────────
-
+# Firms
 async def get_firm(firm_id: str) -> Optional[dict]:
     async with _pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
@@ -153,14 +164,12 @@ async def create_firm(
     firm_id: str,
     firm_name: str,
     description: str,
-    db_type: str,
-    # MySQL — optional
+    db_type: str = "none",
     db_host: Optional[str] = None,
     db_port: Optional[int] = None,
     db_name: Optional[str] = None,
     db_user: Optional[str] = None,
     db_password_enc: Optional[str] = None,
-    # MongoDB — optional
     mongo_uri_enc: Optional[str] = None,
 ):
     async with _pool.acquire() as conn:
@@ -177,8 +186,7 @@ async def create_firm(
             )
 
 
-# ── Schema ────────────────────────────────────────────────────────────────────
-
+# Schema
 async def save_schema(firm_id: str, schema: dict):
     async with _pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -204,22 +212,25 @@ async def get_schema(firm_id: str) -> Optional[dict]:
             return json.loads(data) if isinstance(data, str) else data
 
 
-# ── Roles ─────────────────────────────────────────────────────────────────────
-
+# Roles
 async def create_or_update_role(
     firm_id: str, role_name: str,
-    allowed_tables: list, row_filters: dict = None
+    allowed_tables: list, allowed_documents: list = None, row_filters: dict = None
 ) -> int:
     async with _pool.acquire() as conn:
         async with conn.cursor() as cur:
             await cur.execute(
-                """INSERT INTO roles (firm_id, role_name, allowed_tables, row_filters)
-                   VALUES (%s,%s,%s,%s)
+                """INSERT INTO roles
+                     (firm_id, role_name, allowed_tables, allowed_documents, row_filters)
+                   VALUES (%s,%s,%s,%s,%s)
                    ON DUPLICATE KEY UPDATE
-                     allowed_tables = VALUES(allowed_tables),
-                     row_filters    = VALUES(row_filters)""",
+                     allowed_tables    = VALUES(allowed_tables),
+                     allowed_documents = VALUES(allowed_documents),
+                     row_filters       = VALUES(row_filters)""",
                 (firm_id, role_name,
-                 json.dumps(allowed_tables), json.dumps(row_filters or {})),
+                 json.dumps(allowed_tables),
+                 json.dumps(allowed_documents if allowed_documents is not None else ["*"]),
+                 json.dumps(row_filters or {})),
             )
             await cur.execute(
                 "SELECT role_id FROM roles WHERE firm_id = %s AND role_name = %s",
@@ -232,14 +243,17 @@ async def get_roles_for_firm(firm_id: str) -> list[dict]:
     async with _pool.acquire() as conn:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(
-                "SELECT role_id, role_name, allowed_tables, row_filters FROM roles WHERE firm_id = %s",
+                """SELECT role_id, role_name, allowed_tables, allowed_documents, row_filters
+                   FROM roles WHERE firm_id = %s""",
                 (firm_id,),
             )
             rows = await cur.fetchall()
             for r in rows:
-                for k in ("allowed_tables", "row_filters"):
-                    if isinstance(r[k], str):
+                for k in ("allowed_tables", "allowed_documents", "row_filters"):
+                    if isinstance(r.get(k), str):
                         r[k] = json.loads(r[k])
+                if r.get("allowed_documents") is None:
+                    r["allowed_documents"] = ["*"]
             return rows
 
 
@@ -249,9 +263,11 @@ async def get_role(role_id: int) -> Optional[dict]:
             await cur.execute("SELECT * FROM roles WHERE role_id = %s", (role_id,))
             row = await cur.fetchone()
             if row:
-                for k in ("allowed_tables", "row_filters"):
-                    if isinstance(row[k], str):
+                for k in ("allowed_tables", "allowed_documents", "row_filters"):
+                    if isinstance(row.get(k), str):
                         row[k] = json.loads(row[k])
+                if row.get("allowed_documents") is None:
+                    row["allowed_documents"] = ["*"]
             return row
 
 
@@ -261,8 +277,7 @@ async def delete_role(role_id: int):
             await cur.execute("DELETE FROM roles WHERE role_id = %s", (role_id,))
 
 
-# ── Users ─────────────────────────────────────────────────────────────────────
-
+# Users
 async def create_user(
     user_id: str, firm_id: str, login_id: str,
     password_hash: str, display_name: str, is_admin: bool
@@ -318,7 +333,7 @@ async def get_user_role(user_id: str) -> Optional[dict]:
         async with conn.cursor(aiomysql.DictCursor) as cur:
             await cur.execute(
                 """SELECT r.role_id, r.role_name, r.allowed_tables,
-                          r.row_filters, r.firm_id
+                          r.allowed_documents, r.row_filters, r.firm_id
                    FROM user_roles ur
                    JOIN roles r ON ur.role_id = r.role_id
                    WHERE ur.user_id = %s""",
@@ -326,14 +341,15 @@ async def get_user_role(user_id: str) -> Optional[dict]:
             )
             row = await cur.fetchone()
             if row:
-                for k in ("allowed_tables", "row_filters"):
-                    if isinstance(row[k], str):
+                for k in ("allowed_tables", "allowed_documents", "row_filters"):
+                    if isinstance(row.get(k), str):
                         row[k] = json.loads(row[k])
+                if row.get("allowed_documents") is None:
+                    row["allowed_documents"] = ["*"]
             return row
 
 
-# ── Documents ─────────────────────────────────────────────────────────────────
-
+# Documents
 async def save_document_record(
     firm_id: str, filename: str, chunks_count: int, description: str = None
 ):
