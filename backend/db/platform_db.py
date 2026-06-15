@@ -97,11 +97,38 @@ async def _create_tables():
             FOREIGN KEY (role_id) REFERENCES roles(role_id)  ON DELETE CASCADE
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS firm_documents (
+            id           INT AUTO_INCREMENT PRIMARY KEY,
+            firm_id      VARCHAR(50)  NOT NULL,
+            filename     VARCHAR(255) NOT NULL,
+            chunks_count INT          DEFAULT 0,
+            description  TEXT,
+            uploaded_at  TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uq_firm_doc (firm_id, filename),
+            FOREIGN KEY (firm_id) REFERENCES firms(firm_id) ON DELETE CASCADE
+        )
+        """,
     ]
     async with _pool.acquire() as conn:
         async with conn.cursor() as cur:
             for stmt in statements:
                 await cur.execute(stmt)
+    await _migrate()
+
+
+async def _migrate():
+    """Idempotent column additions for existing installations."""
+    migrations = [
+        "ALTER TABLE firm_documents ADD COLUMN description TEXT",
+    ]
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            for stmt in migrations:
+                try:
+                    await cur.execute(stmt)
+                except Exception:
+                    pass  # column already exists
 
 
 # ── Firm ─────────────────────────────────────────────────────────────────────
@@ -303,3 +330,47 @@ async def get_user_role(user_id: str) -> Optional[dict]:
                     if isinstance(row[k], str):
                         row[k] = json.loads(row[k])
             return row
+
+
+# ── Documents ─────────────────────────────────────────────────────────────────
+
+async def save_document_record(
+    firm_id: str, filename: str, chunks_count: int, description: str = None
+):
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """INSERT INTO firm_documents (firm_id, filename, chunks_count, description)
+                   VALUES (%s, %s, %s, %s)
+                   ON DUPLICATE KEY UPDATE
+                     chunks_count = VALUES(chunks_count),
+                     description  = VALUES(description),
+                     uploaded_at  = NOW()""",
+                (firm_id, filename, chunks_count, description),
+            )
+
+
+async def get_documents_for_firm(firm_id: str) -> list[dict]:
+    async with _pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                """SELECT filename, chunks_count, description, uploaded_at
+                   FROM firm_documents
+                   WHERE firm_id = %s
+                   ORDER BY uploaded_at DESC""",
+                (firm_id,),
+            )
+            rows = await cur.fetchall()
+            for r in rows:
+                if r.get("uploaded_at"):
+                    r["uploaded_at"] = r["uploaded_at"].isoformat()
+            return rows
+
+
+async def delete_document_record(firm_id: str, filename: str):
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM firm_documents WHERE firm_id = %s AND filename = %s",
+                (firm_id, filename),
+            )

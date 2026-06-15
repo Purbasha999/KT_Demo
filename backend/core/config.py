@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic_settings import BaseSettings
 
 
@@ -21,6 +22,26 @@ class Settings(BaseSettings):
 
     # Encryption key for client DB credentials
     ENCRYPTION_KEY: str
+
+    # RAG — Embeddings
+    EMBEDDING_MODEL:      str = "BAAI/bge-large-en-v1.5"
+    EMBEDDING_DIMENSIONS: int = 1024
+
+    # RAG — Qdrant
+    QDRANT_URL:        str           = "http://localhost:6333"
+    QDRANT_API_KEY:    Optional[str] = None
+    QDRANT_COLLECTION: str           = "kt_vox_documents"
+
+    # RAG — Ingestion
+    CHUNK_SIZE:    int = 500
+    CHUNK_OVERLAP: int = 150
+
+    # RAG — Retrieval
+    RAG_TOP_K:           int   = 8
+    RAG_SCORE_THRESHOLD: float = 0.2
+
+    # Upload limit
+    MAX_UPLOAD_SIZE_MB: int = 50
 
     class Config:
         env_file = ".env"

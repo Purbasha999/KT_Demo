@@ -116,3 +116,18 @@ class ChatResponse(BaseModel):
     answer:     str
     rows_count: Optional[int] = None
     attempts:   Optional[int] = None
+
+
+# ── Documents ──
+
+class DocumentUploadResponse(BaseModel):
+    filename:        str
+    chunks_ingested: int
+    status:          str
+
+
+class DocumentListItem(BaseModel):
+    filename:     str
+    chunks_count: int
+    description:  Optional[str] = None
+    uploaded_at:  Optional[str] = None

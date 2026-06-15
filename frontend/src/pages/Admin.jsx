@@ -5,6 +5,7 @@ import {
   getSchema, uploadSchema,
   getRoles, createRole,
   getUsers, createUser, assignRole,
+  getDocuments, uploadDocument, deleteDocument,
 } from "../api/client";
 
 // ── Minimal tab component ──────────────────────────────────────────────────
@@ -92,22 +93,32 @@ function SchemaTab({ notify }) {
 
 // ── Roles tab ──────────────────────────────────────────────────────────────
 function RolesTab({ notify, onRolesChange }) {
-  const [roles, setRoles]       = useState([]);
-  const [name, setName]         = useState("");
-  const [tables, setTables]     = useState("");
-  const [loading, setLoading]   = useState(false);
+  const [roles, setRoles]             = useState([]);
+  const [name, setName]               = useState("");
+  const [allTables, setAllTables]     = useState(false);
+  const [selected, setSelected]       = useState([]);
+  const [schemaTables, setSchemaTables] = useState([]);
+  const [loading, setLoading]         = useState(false);
 
   const load = () => getRoles().then((r) => { setRoles(r); onRolesChange(r); }).catch(() => {});
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    getSchema()
+      .then((s) => setSchemaTables((s.tables || []).map((t) => t.name)))
+      .catch(() => {});
+  }, []);
+
+  const toggleTable = (t) =>
+    setSelected((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]);
 
   const save = async () => {
     setLoading(true);
     try {
-      const allowed = tables.trim() === "*" ? ["*"] : tables.split(",").map((t) => t.trim()).filter(Boolean);
+      const allowed = allTables ? ["*"] : selected;
       await createRole({ role_name: name, allowed_tables: allowed });
       notify(`Role "${name}" saved`, "success");
-      setName(""); setTables("");
+      setName(""); setSelected([]); setAllTables(false);
       load();
     } catch (e) {
       notify(e.response?.data?.detail || "Failed to save role", "error");
@@ -116,26 +127,52 @@ function RolesTab({ notify, onRolesChange }) {
     }
   };
 
+  const canSave = name && (allTables || selected.length > 0);
+
   return (
     <div className="space-y-6">
       <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
         <h3 className="text-sm font-medium text-gray-700 mb-3">Create / update role</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Role name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. CEO, HR Head" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Allowed tables (comma-separated or *)</label>
-            <input value={tables} onChange={(e) => setTables(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="employees, sales or *" />
-          </div>
+        <div className="mb-3">
+          <label className="text-xs text-gray-500 mb-1 block">Role name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="e.g. CEO, HR Head" />
         </div>
-        <button onClick={save} disabled={loading || !name || !tables}
-          className="mt-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+
+        <div>
+          <label className="text-xs text-gray-500 mb-2 block">Allowed tables</label>
+          <label className="flex items-center gap-2 text-sm text-gray-700 mb-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allTables}
+              onChange={(e) => { setAllTables(e.target.checked); setSelected([]); }}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            All tables (*)
+          </label>
+          {!allTables && schemaTables.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {schemaTables.map((t) => (
+                <label key={t} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(t)}
+                    onChange={() => toggleTable(t)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  {t}
+                </label>
+              ))}
+            </div>
+          )}
+          {!allTables && schemaTables.length === 0 && (
+            <p className="text-xs text-gray-400">Upload a schema first to see available tables.</p>
+          )}
+        </div>
+
+        <button onClick={save} disabled={loading || !canSave}
+          className="mt-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
           {loading ? "Saving…" : "Save role"}
         </button>
       </div>
@@ -278,6 +315,127 @@ function UsersTab({ roles, notify }) {
   );
 }
 
+// ── Documents tab ──────────────────────────────────────────────────────────
+function DocumentsTab({ notify }) {
+  const [docs, setDocs]           = useState([]);
+  const [loading, setLoading]     = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [description, setDescription] = useState("");
+  const [pendingFile, setPendingFile] = useState(null);
+
+  const load = () => getDocuments().then(setDocs).catch(() => {});
+
+  useEffect(() => { load(); }, []);
+
+  const handleFileChange = (e) => {
+    setPendingFile(e.target.files?.[0] || null);
+  };
+
+  const handleUpload = async () => {
+    if (!pendingFile) return;
+    setUploading(true);
+    try {
+      const result = await uploadDocument(pendingFile, true, description);
+      notify(`"${result.filename}" ingested — ${result.chunks_ingested} chunks`, "success");
+      setPendingFile(null);
+      setDescription("");
+      load();
+    } catch (err) {
+      notify(err.response?.data?.detail || "Upload failed", "error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDelete = async (filename) => {
+    if (!confirm(`Delete "${filename}"?`)) return;
+    setLoading(true);
+    try {
+      await deleteDocument(filename);
+      notify(`"${filename}" deleted`, "success");
+      load();
+    } catch (err) {
+      notify(err.response?.data?.detail || "Delete failed", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 space-y-3">
+        <h3 className="text-sm font-medium text-gray-700">Upload PDF</h3>
+        <p className="text-xs text-gray-500">
+          PDFs are chunked and embedded for RAG. Uploading the same filename replaces existing chunks.
+        </p>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">File</label>
+          <input
+            type="file"
+            accept=".pdf"
+            onChange={handleFileChange}
+            disabled={uploading}
+            className="block text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-gray-500 mb-1 block">Description (optional)</label>
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. Q1 2025 Financial Report"
+            disabled={uploading}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          />
+        </div>
+        <button
+          onClick={handleUpload}
+          disabled={uploading || !pendingFile}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+        >
+          {uploading ? "Uploading…" : "Upload"}
+        </button>
+      </div>
+
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-200">
+            <th className="text-left pb-2 text-gray-500 font-medium">Filename</th>
+            <th className="text-left pb-2 text-gray-500 font-medium">Description</th>
+            <th className="text-left pb-2 text-gray-500 font-medium">Chunks</th>
+            <th className="text-left pb-2 text-gray-500 font-medium">Uploaded</th>
+            <th className="pb-2" />
+          </tr>
+        </thead>
+        <tbody>
+          {docs.map((d) => (
+            <tr key={d.filename} className="border-b border-gray-100">
+              <td className="py-2 font-mono text-xs text-gray-700">{d.filename}</td>
+              <td className="py-2 text-gray-500 text-xs">{d.description || "—"}</td>
+              <td className="py-2 text-gray-500">{d.chunks_count}</td>
+              <td className="py-2 text-gray-400 text-xs">
+                {new Date(d.uploaded_at).toLocaleString()}
+              </td>
+              <td className="py-2 text-right">
+                <button
+                  onClick={() => handleDelete(d.filename)}
+                  disabled={loading}
+                  className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50 transition-colors"
+                >
+                  Delete
+                </button>
+              </td>
+            </tr>
+          ))}
+          {docs.length === 0 && (
+            <tr><td colSpan={5} className="py-4 text-gray-400 text-center">No documents uploaded yet</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ── Main Admin page ────────────────────────────────────────────────────────
 export default function Admin() {
   const [tab, setTab]       = useState("Schema");
@@ -310,13 +468,14 @@ export default function Admin() {
 
       <main className="max-w-4xl mx-auto px-6 py-8">
         <Tabs
-          tabs={["Schema", "Roles", "Users"]}
+          tabs={["Schema", "Roles", "Users", "Documents"]}
           active={tab}
           onChange={setTab}
         />
-        {tab === "Schema" && <SchemaTab notify={notify} />}
-        {tab === "Roles"  && <RolesTab  notify={notify} onRolesChange={setRoles} />}
-        {tab === "Users"  && <UsersTab  roles={roles} notify={notify} />}
+        {tab === "Schema"    && <SchemaTab    notify={notify} />}
+        {tab === "Roles"     && <RolesTab     notify={notify} onRolesChange={setRoles} />}
+        {tab === "Users"     && <UsersTab     roles={roles} notify={notify} />}
+        {tab === "Documents" && <DocumentsTab notify={notify} />}
       </main>
     </div>
   );

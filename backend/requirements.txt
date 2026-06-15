@@ -7,6 +7,12 @@ pydantic
 pydantic-settings
 python-jose[cryptography]
 passlib[bcrypt]
+bcrypt==4.0.1
 cryptography
 httpx
 python-dotenv
+python-multipart
+sentence-transformers
+qdrant-client>=1.10.0
+pypdf>=4.3.0
+langchain-text-splitters>=0.2.0

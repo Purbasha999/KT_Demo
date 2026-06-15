@@ -1,3 +1,4 @@
+import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -7,11 +8,18 @@ from db.client_db import close_all_pools
 from auth.router import router as auth_router
 from admin.router import router as admin_router
 from chat.router import router as chat_router
+from rag.vector_store import ensure_collection
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    try:
+        await ensure_collection()
+    except Exception as exc:
+        logger.warning("Qdrant not available at startup — RAG disabled until Qdrant comes online: %s", exc)
     yield
     await close_db()
     await close_all_pools()

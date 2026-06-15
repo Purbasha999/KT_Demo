@@ -1,18 +1,23 @@
 import uuid
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Query
 
 from core.security import require_admin, hash_password
+from core.config import settings
 from models.schemas import (
     SchemaUploadRequest,
     RoleCreateRequest, RoleResponse,
     UserCreateRequest, UserRoleAssignRequest, UserListItem,
+    DocumentUploadResponse, DocumentListItem,
 )
 import db.platform_db as pdb
+from rag.ingestion import ingest_pdf
+from rag.vector_store import delete_by_firm_and_source
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 
 
-# ── Schema ───
+# Schema 
 
 @router.post("/schema")
 async def upload_schema(body: SchemaUploadRequest, admin=Depends(require_admin)):
@@ -29,8 +34,7 @@ async def get_schema(admin=Depends(require_admin)):
     return schema
 
 
-# ── Roles ─────────────────────────────────────────────────────────────────────
-
+# Roles
 @router.post("/role", response_model=RoleResponse, status_code=201)
 async def create_role(body: RoleCreateRequest, admin=Depends(require_admin)):
     firm_id = admin["firm_id"]
@@ -69,8 +73,7 @@ async def delete_role(role_id: int, admin=Depends(require_admin)):
     await pdb.delete_role(role_id)
 
 
-# ── Users ─────────────────────────────────────────────────────────────────────
-
+# Users
 @router.post("/user", status_code=201)
 async def create_user(body: UserCreateRequest, admin=Depends(require_admin)):
     firm_id = admin["firm_id"]
@@ -98,3 +101,56 @@ async def list_users(admin=Depends(require_admin)):
 async def assign_role(body: UserRoleAssignRequest, admin=Depends(require_admin)):
     await pdb.assign_role_to_user(body.user_id, body.role_id)
     return {"message": "Role assigned"}
+
+
+# Documents 
+
+@router.post("/documents/upload", response_model=DocumentUploadResponse, status_code=201)
+async def upload_document(
+    file: UploadFile = File(...),
+    replace: bool = Query(True, description="Replace existing vectors for this file"),
+    description: Optional[str] = Form(None),
+    admin=Depends(require_admin),
+):
+    firm_id  = admin["firm_id"]
+    filename = file.filename or "upload.pdf"
+
+    if not filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are accepted.")
+
+    contents  = await file.read()
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(contents) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds the {settings.MAX_UPLOAD_SIZE_MB} MB limit.",
+        )
+
+    try:
+        result = await ingest_pdf(contents, filename, firm_id, replace=replace)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Ingestion failed: {exc}")
+
+    if result["status"] == "success":
+        await pdb.save_document_record(firm_id, filename, result["chunks_ingested"], description)
+
+    return DocumentUploadResponse(
+        filename=filename,
+        chunks_ingested=result["chunks_ingested"],
+        status=result["status"],
+    )
+
+
+@router.get("/documents", response_model=list[DocumentListItem])
+async def list_documents(admin=Depends(require_admin)):
+    return await pdb.get_documents_for_firm(admin["firm_id"])
+
+
+@router.delete("/documents/{filename}", status_code=204)
+async def delete_document(filename: str, admin=Depends(require_admin)):
+    firm_id = admin["firm_id"]
+    try:
+        await delete_by_firm_and_source(firm_id, filename)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Vector deletion failed: {exc}")
+    await pdb.delete_document_record(firm_id, filename)

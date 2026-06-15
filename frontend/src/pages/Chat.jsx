@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { sendQuestion } from "../api/client";
+import ReactMarkdown from "react-markdown";
 
 function Message({ msg }) {
   const isUser = msg.role === "user";
@@ -14,7 +15,24 @@ function Message({ msg }) {
             : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm shadow-sm"
         }`}
       >
-        {msg.content}
+        {isUser ? (
+          msg.content
+        ) : (
+          <ReactMarkdown
+            components={{
+              p:  ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+              ul: ({ children }) => <ul className="list-disc pl-4 mb-2 space-y-1">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal pl-4 mb-2 space-y-1">{children}</ol>,
+              li: ({ children }) => <li>{children}</li>,
+              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+              h1: ({ children }) => <p className="font-semibold mt-2 mb-1">{children}</p>,
+              h2: ({ children }) => <p className="font-semibold mt-2 mb-1">{children}</p>,
+              h3: ({ children }) => <p className="font-medium mt-1 mb-0.5">{children}</p>,
+            }}
+          >
+            {msg.content}
+          </ReactMarkdown>
+        )}
         {msg.rows_count != null && msg.rows_count > 0 && (
           <p className={`text-xs mt-2 ${isUser ? "text-blue-200" : "text-gray-400"}`}>
             {msg.rows_count} row{msg.rows_count !== 1 ? "s" : ""} retrieved

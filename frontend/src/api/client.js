@@ -46,4 +46,16 @@ export const createUser = (data) =>
 export const assignRole = (user_id, role_id) =>
   api.post("/admin/user/assign-role", { user_id, role_id }).then((r) => r.data);
 
+export const getDocuments = () => api.get("/admin/documents").then((r) => r.data);
+export const uploadDocument = (file, replace = true, description = "") => {
+  const form = new FormData();
+  form.append("file", file);
+  if (description) form.append("description", description);
+  return api.post(`/admin/documents/upload?replace=${replace}`, form, {
+    headers: { "Content-Type": "multipart/form-data" },
+  }).then((r) => r.data);
+};
+export const deleteDocument = (filename) =>
+  api.delete(`/admin/documents/${encodeURIComponent(filename)}`).then((r) => r.data);
+
 export default api;

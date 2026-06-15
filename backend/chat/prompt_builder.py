@@ -119,7 +119,7 @@ def build_response_prompt(question: str, results: list[dict]) -> str:
     rows_text = "\n".join(str(r) for r in sample)
     note      = f"\n(Showing {len(sample)} of {len(results)} total rows)" if len(results) > 50 else ""
 
-    return f"""You are a helpful data assistant. Format the query results as a clear, concise natural language answer.
+    return f"""You are a helpful data assistant. Format the query results as a clear, natural language answer.
 
 USER QUESTION: {question}
 
@@ -127,8 +127,75 @@ QUERY RESULTS{note}:
 {rows_text}
 
 Instructions:
-- Answer directly and concisely.
-- For a single count or value, state it in one sentence.
-- For a list, present it cleanly in bullets or numbered if possible, with each point in a separate line.
-- Do not mention SQL, MongoDB, databases, or queries in your answer.
+- For a single value or count, answer in one sentence.
+- For multiple items or fields, use a numbered list or bullet points — one item per line.
+- Group related information with a short heading if it helps clarity.
+- Never put multiple data points in a single paragraph.
+- Do not mention SQL, MongoDB, databases, or queries.
+- Do not repeat the question."""
+
+
+_DOC_CHUNK_TEMPLATE = "[Source: {source}, Page {page}]\n{text}"
+
+
+def build_rag_response_prompt(question: str, chunks: list[dict]) -> str:
+    context_parts = [
+        _DOC_CHUNK_TEMPLATE.format(
+            source=c["source"], page=c["page"], text=c["text"]
+        )
+        for c in chunks
+    ]
+    context = "\n\n---\n\n".join(context_parts)
+
+    return f"""You are a helpful assistant that answers questions using the provided document context.
+
+Rules:
+- Answer only from the context below — do not add outside knowledge.
+- Present only what the context covers; do not mention gaps or missing information.
+- Use bullet points or numbered lists for multiple items — one point per line.
+- Use short headings to group distinct topics if the answer covers more than one area.
+- Never put multiple data points in a single paragraph.
+- Cite the source document and page number when referencing specific facts.
+
+CONTEXT:
+{context}
+
+USER QUESTION: {question}"""
+
+
+def build_combined_response_prompt(
+    question: str,
+    db_rows: list[dict],
+    rag_chunks: list[dict],
+) -> str:
+    sample    = db_rows[:50]
+    rows_text = "\n".join(str(r) for r in sample)
+    db_note   = f"\n(Showing {len(sample)} of {len(db_rows)} total rows)" if len(db_rows) > 50 else ""
+
+    context_parts = [
+        _DOC_CHUNK_TEMPLATE.format(
+            source=c["source"], page=c["page"], text=c["text"]
+        )
+        for c in rag_chunks
+    ]
+    doc_context = "\n\n---\n\n".join(context_parts)
+
+    return f"""You are a helpful data assistant with access to both structured database records and document context.
+Combine both sources to give a complete, clear answer.
+
+USER QUESTION: {question}
+
+DATABASE RESULTS{db_note}:
+{rows_text}
+
+DOCUMENT CONTEXT:
+{doc_context}
+
+Instructions:
+- Use whichever sources have relevant information — do not mention that a source has no data.
+- Use bullet points or numbered lists for multiple items — one item per line.
+- Use short headings to separate distinct topics if the answer spans multiple areas.
+- Never put multiple data points in a single paragraph.
+- Cite document source and page number when referencing document content.
+- Do not mention SQL, MongoDB, or internal query details.
 - Do not repeat the question."""
