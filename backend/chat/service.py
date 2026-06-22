@@ -2,7 +2,14 @@
 
 import asyncio
 import json
+import re
 from fastapi import HTTPException
+
+_GREETING_RE = re.compile(
+    r"^\s*(hi+|hello+|hey+|good\s+(morning|afternoon|evening|night|day)"
+    r"|howdy|greetings|what'?s\s+up|sup|hiya|namaste|yo)\W*$",
+    re.IGNORECASE,
+)
 
 from core.security import decrypt_value
 import db.platform_db as pdb
@@ -17,6 +24,7 @@ from chat.prompt_builder import (
 )
 from chat.sql_validator import validate_query
 from chat.llm_client import generate_sql, generate_mongo_query, format_response
+from chat.row_filter_injector import inject_row_filters
 from rag.retrieval import retrieve_relevant_chunks
 
 MAX_GENERATE_ATTEMPTS = 3
@@ -91,6 +99,7 @@ async def _run_db_pipeline(
     allowed_tables: list[str],
     db_config: dict,
     firm_id: str,
+    row_filters: dict | None = None,
 ) -> dict:
     """
     Returns:
@@ -99,6 +108,10 @@ async def _run_db_pipeline(
     Raises HTTPException for fatal generation/execution failures.
     """
     schema_context = build_schema_context(schema, allowed_tables)
+
+    all_table_names = [t["name"] for t in schema.get("tables", [])]
+    permitted_set   = set(allowed_tables)
+    forbidden_tables = [t for t in all_table_names if t not in permitted_set]
 
     previous_raw     = None
     validation_error = None
@@ -113,6 +126,7 @@ async def _run_db_pipeline(
         if db_type == "mongodb":
             prompt = build_mongo_prompt(
                 question, schema_context, allowed_tables,
+                forbidden_tables=forbidden_tables,
                 previous_query=previous_raw,
                 validation_error=validation_error,
                 db_error=db_error,
@@ -120,6 +134,7 @@ async def _run_db_pipeline(
         else:
             prompt = build_mysql_prompt(
                 question, schema_context, allowed_tables,
+                forbidden_tables=forbidden_tables,
                 previous_sql=previous_raw,
                 validation_error=validation_error,
                 db_error=db_error,
@@ -154,6 +169,9 @@ async def _run_db_pipeline(
             detail="Could not generate a valid query after multiple attempts. Try rephrasing.",
         )
 
+    # Safety-net: inject any row filters the LLM may have missed
+    parsed_query = inject_row_filters(db_type, parsed_query, row_filters)
+
     # Execute -> DB-error retry loop
     results  = None
     db_error = None
@@ -176,11 +194,13 @@ async def _run_db_pipeline(
             if db_type == "mongodb":
                 retry_prompt = build_mongo_prompt(
                     question, schema_context, allowed_tables,
+                    forbidden_tables=forbidden_tables,
                     previous_query=previous_raw, db_error=db_error,
                 )
             else:
                 retry_prompt = build_mysql_prompt(
                     question, schema_context, allowed_tables,
+                    forbidden_tables=forbidden_tables,
                     previous_sql=previous_raw, db_error=db_error,
                 )
 
@@ -207,6 +227,11 @@ async def _run_db_pipeline(
 
 async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
 
+    # Short-circuit for greetings — no DB or RAG needed
+    if _GREETING_RE.match(question.strip()):
+        return {"answer": "Hello! How can I help you with your data today?",
+                "rows_count": None, "attempts": None}
+
     # Load prerequisites
     user_role = await pdb.get_user_role(user_id)
     if not user_role:
@@ -222,6 +247,7 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
     db_type           = firm["db_type"]
     allowed_tables    = user_role["allowed_tables"]
     allowed_documents = user_role.get("allowed_documents", ["*"])
+    row_filters       = user_role.get("row_filters") or {}
     schema            = await pdb.get_schema(firm_id)
 
     # Start RAG retrieval in background
@@ -240,7 +266,8 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
             tables = [t["name"] for t in schema["tables"]]
         try:
             db_result = await _run_db_pipeline(
-                question, db_type, schema, tables, db_config, firm_id
+                question, db_type, schema, tables, db_config, firm_id,
+                row_filters=row_filters,
             )
         except HTTPException:
             rag_task.cancel()
@@ -265,12 +292,12 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
     attempts = (db_result or {}).get("attempts")
 
     if has_db_rows and has_rag:
-        prompt = build_combined_response_prompt(question, db_result["rows"], rag_chunks)
+        prompt = build_combined_response_prompt(question, db_result["rows"], rag_chunks, row_filters=row_filters)
         answer = await format_response(prompt)
         return {"answer": answer, "rows_count": len(db_result["rows"]), "attempts": attempts}
 
     if has_db_rows:
-        answer = await format_response(build_response_prompt(question, db_result["rows"]))
+        answer = await format_response(build_response_prompt(question, db_result["rows"], row_filters=row_filters))
         return {"answer": answer, "rows_count": len(db_result["rows"]), "attempts": attempts}
 
     if has_rag:

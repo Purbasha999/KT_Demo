@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import {
   getSchema, uploadSchema,
-  getRoles, createRole,
-  getUsers, createUser, assignRole,
+  getRoles, createRole, updateRole, deleteRole,
+  getUsers, createUser, assignRole, deleteUser,
   getDocuments, uploadDocument, deleteDocument,
 } from "../api/client";
 
@@ -121,38 +121,138 @@ function CheckboxGroup({ label, allLabel, items, allChecked, selected, onToggleA
   );
 }
 
+const emptyTableRow = () => ({ id: Date.now() + Math.random(), table: "", conditional: false, column: "", values: [""] });
+
+function Toggle({ on, onToggle }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none ${on ? "bg-blue-600" : "bg-gray-300"}`}
+    >
+      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${on ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+    </button>
+  );
+}
+
 function RolesTab({ notify, onRolesChange }) {
   const [roles, setRoles]               = useState([]);
+  const [editingId, setEditingId]       = useState(null); // null = create mode, number = edit mode
   const [name, setName]                 = useState("");
-  const [allTables, setAllTables]       = useState(false);
-  const [selTables, setSelTables]       = useState([]);
-  const [allDocs, setAllDocs]           = useState(true);
-  const [selDocs, setSelDocs]           = useState([]);
-  const [schemaTables, setSchemaTables] = useState([]);
-  const [docList, setDocList]           = useState([]);
-  const [loading, setLoading]           = useState(false);
+  const [allTables, setAllTables]   = useState(false);
+  const [tablePerms, setTablePerms] = useState([emptyTableRow()]);
+  const [allDocs, setAllDocs]       = useState(true);
+  const [selDocs, setSelDocs]       = useState([]);
+  const [schemaData, setSchemaData] = useState([]); // full table objects with fields
+  const [docList, setDocList]       = useState([]);
+  const [loading, setLoading]       = useState(false);
 
   const load = () => getRoles().then((r) => { setRoles(r); onRolesChange(r); }).catch(() => {});
 
   useEffect(() => {
     load();
-    getSchema().then((s) => setSchemaTables((s.tables || []).map((t) => t.name))).catch(() => {});
+    getSchema().then((s) => setSchemaData(s.tables || [])).catch(() => {});
     getDocuments().then((d) => setDocList(d.map((doc) => doc.filename))).catch(() => {});
   }, []);
 
-  const toggleTable = (t) => setSelTables((p) => p.includes(t) ? p.filter((x) => x !== t) : [...p, t]);
-  const toggleDoc   = (d) => setSelDocs((p)   => p.includes(d) ? p.filter((x) => x !== d) : [...p, d]);
+  // ── table perm helpers ──────────────────────────────────────────────────
+  const addTableRow    = () => setTablePerms((p) => [...p, emptyTableRow()]);
+  const removeTableRow = (id) => setTablePerms((p) => p.filter((r) => r.id !== id));
+  const updateRow      = (id, field, val) =>
+    setTablePerms((p) => p.map((r) => r.id === id ? { ...r, [field]: val } : r));
+  // When the table selection changes, reset the attribute so the dropdown repopulates
+  const updateRowTable = (id, val) =>
+    setTablePerms((p) => p.map((r) => r.id === id ? { ...r, table: val, column: "" } : r));
+  const addValue       = (id) =>
+    setTablePerms((p) => p.map((r) => r.id === id ? { ...r, values: [...r.values, ""] } : r));
+  const updateValue    = (id, idx, val) =>
+    setTablePerms((p) => p.map((r) => r.id === id
+      ? { ...r, values: r.values.map((v, i) => i === idx ? val : v) }
+      : r));
+  const removeValue    = (id, idx) =>
+    setTablePerms((p) => p.map((r) => r.id === id && r.values.length > 1
+      ? { ...r, values: r.values.filter((_, i) => i !== idx) }
+      : r));
+
+  const buildPayload = () => {
+    if (allTables) return { allowed_tables: ["*"], row_filters: {} };
+    const allowed_tables = [...new Set(tablePerms.map((r) => r.table).filter(Boolean))];
+    const row_filters = {};
+    tablePerms.forEach((row) => {
+      if (!row.table || !row.conditional || !row.column.trim()) return;
+      const vals = row.values.map((v) => v.trim()).filter(Boolean);
+      if (!vals.length) return;
+      if (!row_filters[row.table]) row_filters[row.table] = {};
+      row_filters[row.table][row.column.trim()] = vals;
+    });
+    return { allowed_tables, row_filters };
+  };
+
+  const toggleDoc = (d) => setSelDocs((p) => p.includes(d) ? p.filter((x) => x !== d) : [...p, d]);
+
+  const resetForm = () => {
+    setEditingId(null);
+    setName(""); setTablePerms([emptyTableRow()]); setAllTables(false);
+    setSelDocs([]); setAllDocs(true);
+  };
+
+  const loadRoleForEdit = (role) => {
+    setEditingId(role.role_id);
+    setName(role.role_name);
+    const isAll = role.allowed_tables[0] === "*";
+    setAllTables(isAll);
+    if (!isAll) {
+      const perms = role.allowed_tables.map((tableName) => {
+        const filters = role.row_filters?.[tableName];
+        if (!filters || Object.keys(filters).length === 0) {
+          return { id: Date.now() + Math.random(), table: tableName, conditional: false, column: "", values: [""] };
+        }
+        const [col, vals] = Object.entries(filters)[0];
+        return {
+          id: Date.now() + Math.random(), table: tableName, conditional: true,
+          column: col, values: Array.isArray(vals) && vals.length > 0 ? vals.map(String) : [""],
+        };
+      });
+      setTablePerms(perms.length > 0 ? perms : [emptyTableRow()]);
+    } else {
+      setTablePerms([emptyTableRow()]);
+    }
+    const isAllDocs = role.allowed_documents[0] === "*";
+    setAllDocs(isAllDocs);
+    setSelDocs(isAllDocs ? [] : role.allowed_documents);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDeleteRole = async (role) => {
+    if (!confirm(`Delete role "${role.role_name}"? This cannot be undone.`)) return;
+    try {
+      await deleteRole(role.role_id);
+      notify(`Role "${role.role_name}" deleted`, "success");
+      if (editingId === role.role_id) resetForm();
+      load();
+    } catch (e) {
+      notify(e.response?.data?.detail || "Failed to delete role", "error");
+    }
+  };
 
   const save = async () => {
     setLoading(true);
     try {
-      await createRole({
+      const { allowed_tables, row_filters } = buildPayload();
+      const payload = {
         role_name:         name,
-        allowed_tables:    allTables ? ["*"] : selTables,
-        allowed_documents: allDocs   ? ["*"] : selDocs,
-      });
-      notify(`Role "${name}" saved`, "success");
-      setName(""); setSelTables([]); setAllTables(false); setSelDocs([]); setAllDocs(true);
+        allowed_tables,
+        allowed_documents: allDocs ? ["*"] : selDocs,
+        row_filters,
+      };
+      if (editingId !== null) {
+        await updateRole(editingId, payload);
+        notify(`Role "${name}" updated`, "success");
+      } else {
+        await createRole(payload);
+        notify(`Role "${name}" saved`, "success");
+      }
+      resetForm();
       load();
     } catch (e) {
       notify(e.response?.data?.detail || "Failed to save role", "error");
@@ -161,13 +261,14 @@ function RolesTab({ notify, onRolesChange }) {
     }
   };
 
-  const canSave = !!name;
-
   return (
     <div className="space-y-6">
       <div className="bg-gray-50 rounded-xl p-4 border border-gray-200 space-y-4">
-        <h3 className="text-sm font-medium text-gray-700">Create / update role</h3>
+        <h3 className="text-sm font-medium text-gray-700">
+          {editingId !== null ? "Edit role" : "Create role"}
+        </h3>
 
+        {/* Role name */}
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Role name</label>
           <input value={name} onChange={(e) => setName(e.target.value)}
@@ -175,17 +276,118 @@ function RolesTab({ notify, onRolesChange }) {
             placeholder="e.g. CEO, HR Head" />
         </div>
 
-        <CheckboxGroup
-          label="Allowed tables"
-          allLabel="All tables (*)"
-          items={schemaTables}
-          allChecked={allTables}
-          selected={selTables}
-          onToggleAll={(v) => { setAllTables(v); setSelTables([]); }}
-          onToggle={toggleTable}
-          emptyMsg="Upload a schema first to see available tables."
-        />
+        {/* Table permissions */}
+        <div>
+          <label className="text-xs text-gray-500 mb-2 block">Table permissions</label>
 
+          <label className="flex items-center gap-2 text-sm text-gray-700 mb-3 cursor-pointer select-none">
+            <input type="checkbox" checked={allTables}
+              onChange={(e) => setAllTables(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            All tables (*)
+          </label>
+
+          {!allTables && (
+            <div className="space-y-2">
+              {tablePerms.map((row) => (
+                <div key={row.id} className="border border-gray-200 rounded-lg p-3 bg-white space-y-2">
+
+                  {/* Table dropdown + toggle + remove */}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={row.table}
+                      onChange={(e) => updateRowTable(row.id, e.target.value)}
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select table</option>
+                      {schemaData.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                    </select>
+
+                    <span className="text-xs text-gray-400 whitespace-nowrap">Conditional</span>
+                    <Toggle
+                      on={row.conditional}
+                      onToggle={() => updateRow(row.id, "conditional", !row.conditional)}
+                    />
+
+                    {tablePerms.length > 1 && (
+                      <button type="button" onClick={() => removeTableRow(row.id)}
+                        className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors">
+                        ×
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Conditional fields */}
+                  {row.conditional && (
+                    <div className="pl-1 pt-1 space-y-2 border-t border-gray-100">
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Attribute</label>
+                        {(() => {
+                          const fields = schemaData.find((t) => t.name === row.table)?.fields || [];
+                          return fields.length > 0 ? (
+                            <select
+                              value={row.column}
+                              onChange={(e) => updateRow(row.id, "column", e.target.value)}
+                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
+                              <option value="">Select attribute</option>
+                              {fields.map((f) => (
+                                <option key={f.name} value={f.name}>{f.name}</option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              value={row.column}
+                              onChange={(e) => updateRow(row.id, "column", e.target.value)}
+                              placeholder="e.g. department"
+                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          );
+                        })()}
+                      </div>
+
+                      <div>
+                        <label className="text-xs text-gray-400 mb-1 block">Values</label>
+                        <div className="space-y-1.5">
+                          {row.values.map((val, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <input
+                                value={val}
+                                onChange={(e) => updateValue(row.id, idx, e.target.value)}
+                                placeholder={`Value ${idx + 1}`}
+                                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                              {row.values.length > 1 && (
+                                <button type="button" onClick={() => removeValue(row.id, idx)}
+                                  className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors">
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          <button type="button" onClick={() => addValue(row.id)}
+                            className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors">
+                            <span className="text-sm font-bold">+</span> Add value
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {schemaData.length === 0 && (
+                <p className="text-xs text-gray-400 pl-1">Upload a schema first to see available tables.</p>
+              )}
+              <button type="button" onClick={addTableRow}
+                className="w-full border border-dashed border-gray-300 rounded-lg py-2 text-sm text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors flex items-center justify-center gap-1">
+                <span className="text-base font-bold">+</span> Add table
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Document permissions — unchanged */}
         <CheckboxGroup
           label="Allowed documents"
           allLabel="All documents (*)"
@@ -197,34 +399,57 @@ function RolesTab({ notify, onRolesChange }) {
           emptyMsg="Upload PDFs first to restrict document access."
         />
 
-        <button onClick={save} disabled={loading || !canSave}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-          {loading ? "Saving…" : "Save role"}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={save} disabled={loading || !name}
+            className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            {loading ? "Saving…" : editingId !== null ? "Update role" : "Save role"}
+          </button>
+          {editingId !== null && (
+            <button onClick={resetForm}
+              className="border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
+      {/* Roles table */}
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-200">
             <th className="text-left pb-2 text-gray-500 font-medium">Role</th>
             <th className="text-left pb-2 text-gray-500 font-medium">Tables</th>
             <th className="text-left pb-2 text-gray-500 font-medium">Documents</th>
+            <th className="pb-2" />
           </tr>
         </thead>
         <tbody>
           {roles.map((r) => (
-            <tr key={r.role_id} className="border-b border-gray-100">
+            <tr key={r.role_id} className={`border-b border-gray-100 ${editingId === r.role_id ? "bg-blue-50" : ""}`}>
               <td className="py-2 font-medium text-gray-700">{r.role_name}</td>
               <td className="py-2 text-gray-500 text-xs">
                 {Array.isArray(r.allowed_tables) ? r.allowed_tables.join(", ") : r.allowed_tables}
+                {r.row_filters && Object.keys(r.row_filters).length > 0 && (
+                  <span className="ml-1.5 text-orange-500 font-medium">(filtered)</span>
+                )}
               </td>
               <td className="py-2 text-gray-500 text-xs">
                 {Array.isArray(r.allowed_documents) ? r.allowed_documents.join(", ") : (r.allowed_documents || "*")}
               </td>
+              <td className="py-2 text-right whitespace-nowrap">
+                <button onClick={() => loadRoleForEdit(r)}
+                  className="text-xs text-blue-600 hover:text-blue-800 mr-3 transition-colors">
+                  Edit
+                </button>
+                <button onClick={() => handleDeleteRole(r)}
+                  className="text-xs text-red-400 hover:text-red-600 transition-colors">
+                  Delete
+                </button>
+              </td>
             </tr>
           ))}
           {roles.length === 0 && (
-            <tr><td colSpan={3} className="py-4 text-gray-400 text-center">No roles yet</td></tr>
+            <tr><td colSpan={4} className="py-4 text-gray-400 text-center">No roles yet</td></tr>
           )}
         </tbody>
       </table>
@@ -274,6 +499,17 @@ function UsersTab({ roles, notify }) {
     }
   };
 
+  const handleDeleteUser = async (user) => {
+    if (!confirm(`Delete user "${user.display_name || user.login_id}"? This cannot be undone.`)) return;
+    try {
+      await deleteUser(user.user_id);
+      notify("User deleted", "success");
+      load();
+    } catch (e) {
+      notify(e.response?.data?.detail || "Failed to delete user", "error");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
@@ -317,6 +553,7 @@ function UsersTab({ roles, notify }) {
             <th className="text-left pb-2 text-gray-500 font-medium">User</th>
             <th className="text-left pb-2 text-gray-500 font-medium">Login ID</th>
             <th className="text-left pb-2 text-gray-500 font-medium">Role</th>
+            <th className="pb-2" />
           </tr>
         </thead>
         <tbody>
@@ -334,10 +571,16 @@ function UsersTab({ roles, notify }) {
                   {roles.map((r) => <option key={r.role_id} value={r.role_id}>{r.role_name}</option>)}
                 </select>
               </td>
+              <td className="py-2 text-right">
+                <button onClick={() => handleDeleteUser(u)}
+                  className="text-xs text-red-400 hover:text-red-600 transition-colors">
+                  Delete
+                </button>
+              </td>
             </tr>
           ))}
           {users.length === 0 && (
-            <tr><td colSpan={3} className="py-4 text-gray-400 text-center">No users yet</td></tr>
+            <tr><td colSpan={4} className="py-4 text-gray-400 text-center">No users yet</td></tr>
           )}
         </tbody>
       </table>

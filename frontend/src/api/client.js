@@ -39,12 +39,18 @@ export const uploadSchema = (schema) =>
 export const getRoles = () => api.get("/admin/roles").then((r) => r.data);
 export const createRole = (data) =>
   api.post("/admin/role", data).then((r) => r.data);
+export const updateRole = (roleId, data) =>
+  api.put(`/admin/role/${roleId}`, data).then((r) => r.data);
+export const deleteRole = (roleId) =>
+  api.delete(`/admin/role/${roleId}`);
 
 export const getUsers = () => api.get("/admin/users").then((r) => r.data);
 export const createUser = (data) =>
   api.post("/admin/user", data).then((r) => r.data);
 export const assignRole = (user_id, role_id) =>
   api.post("/admin/user/assign-role", { user_id, role_id }).then((r) => r.data);
+export const deleteUser = (userId) =>
+  api.delete(`/admin/user/${userId}`);
 
 export const getDocuments = () => api.get("/admin/documents").then((r) => r.data);
 export const uploadDocument = (file, replace = true, description = "") => {

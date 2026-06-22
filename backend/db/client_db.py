@@ -1,6 +1,41 @@
+import re
+import datetime
 import aiomysql
 import motor.motor_asyncio as motor
 from urllib.parse import urlparse, urlencode, parse_qs, urlunparse
+
+# Matches ISO 8601 date strings that MongoDB cannot compare against ISODate natively
+_DATE_STR_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?)?$"
+)
+_DATE_FMTS = [
+    "%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ",
+    "%Y-%m-%dT%H:%M:%S",     "%Y-%m-%d",
+]
+
+
+def _try_parse_date(s: str):
+    """Return a timezone-naive datetime if s looks like an ISO date, else None."""
+    if not _DATE_STR_RE.match(s):
+        return None
+    for fmt in _DATE_FMTS:
+        try:
+            return datetime.datetime.strptime(s, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _coerce_operator_expr(op_dict: dict) -> dict:
+    """Convert ISO date strings inside MongoDB operator expressions to datetime objects."""
+    result = {}
+    for op, val in op_dict.items():
+        if isinstance(val, str):
+            parsed = _try_parse_date(val)
+            result[op] = parsed if parsed is not None else val
+        else:
+            result[op] = val
+    return result
 
 _mysql_pools: dict[str, aiomysql.Pool] = {}
 
@@ -99,7 +134,8 @@ def _coerce_filter(filter_dict: dict, schema_fields: list[dict]) -> dict:
         field_key = k.split(".")[-1]   # handle dot-notation e.g. "source.city"
 
         if isinstance(v, dict):
-            coerced[k] = v
+            # Recurse into operator expressions to convert ISO date strings to datetime
+            coerced[k] = _coerce_operator_expr(v)
 
         elif type_map.get(k) == "int" and isinstance(v, str):
             try:

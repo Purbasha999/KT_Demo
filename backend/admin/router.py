@@ -65,12 +65,39 @@ async def list_roles(admin=Depends(require_admin)):
     return await pdb.get_roles_for_firm(admin["firm_id"])
 
 
+@router.put("/role/{role_id}", response_model=RoleResponse)
+async def update_role(role_id: int, body: RoleCreateRequest, admin=Depends(require_admin)):
+    firm_id = admin["firm_id"]
+    role = await pdb.get_role(role_id)
+    if not role or role["firm_id"] != firm_id:
+        raise HTTPException(status_code=404, detail="Role not found.")
+
+    schema = await pdb.get_schema(firm_id)
+    if schema and body.allowed_tables not in (["*"], []):
+        valid   = {t["name"] for t in schema["tables"]}
+        invalid = [t for t in body.allowed_tables if t not in valid]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Tables not in schema: {invalid}")
+
+    await pdb.update_role(role_id, firm_id, body.role_name,
+                          body.allowed_tables, body.allowed_documents, body.row_filters)
+    return RoleResponse(role_id=role_id, role_name=body.role_name,
+                        allowed_tables=body.allowed_tables,
+                        allowed_documents=body.allowed_documents,
+                        row_filters=body.row_filters)
+
+
 @router.delete("/role/{role_id}", status_code=204)
 async def delete_role(role_id: int, admin=Depends(require_admin)):
     role = await pdb.get_role(role_id)
     if not role or role["firm_id"] != admin["firm_id"]:
         raise HTTPException(status_code=404, detail="Role not found.")
     await pdb.delete_role(role_id)
+
+
+@router.delete("/user/{user_id}", status_code=204)
+async def delete_user(user_id: str, admin=Depends(require_admin)):
+    await pdb.delete_user(user_id, admin["firm_id"])
 
 
 # Users

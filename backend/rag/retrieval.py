@@ -14,6 +14,10 @@ async def retrieve_relevant_chunks(
     firm_id: str,
     allowed_documents: list[str] | None = None,
 ) -> list[dict]:
+    # Empty list means no document access at all — skip Qdrant entirely.
+    if allowed_documents is not None and len(allowed_documents) == 0:
+        return []
+
     try:
         if allowed_documents and allowed_documents != ["*"]:
             source_filters = allowed_documents

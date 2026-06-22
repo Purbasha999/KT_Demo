@@ -271,6 +271,23 @@ async def get_role(role_id: int) -> Optional[dict]:
             return row
 
 
+async def update_role(
+    role_id: int, firm_id: str, role_name: str,
+    allowed_tables: list, allowed_documents: list, row_filters: dict,
+) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """UPDATE roles
+                   SET role_name=%s, allowed_tables=%s, allowed_documents=%s, row_filters=%s
+                   WHERE role_id=%s AND firm_id=%s""",
+                (role_name, json.dumps(allowed_tables),
+                 json.dumps(allowed_documents or ["*"]),
+                 json.dumps(row_filters or {}),
+                 role_id, firm_id),
+            )
+
+
 async def delete_role(role_id: int):
     async with _pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -316,6 +333,15 @@ async def get_users_for_firm(firm_id: str) -> list[dict]:
                 (firm_id,),
             )
             return await cur.fetchall()
+
+
+async def delete_user(user_id: str, firm_id: str) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM users WHERE user_id=%s AND firm_id=%s",
+                (user_id, firm_id),
+            )
 
 
 async def assign_role_to_user(user_id: str, role_id: int):
