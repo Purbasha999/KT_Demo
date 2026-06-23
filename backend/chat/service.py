@@ -11,6 +11,62 @@ _GREETING_RE = re.compile(
     re.IGNORECASE,
 )
 
+_CHART_RE = re.compile(
+    r"\b(chart|graph|plot|visuali[sz]e?|pie(\s+chart)?|bar(\s+chart)?|"
+    r"line(\s+chart)?|histogram|diagram|visuali[sz]ation)\b",
+    re.IGNORECASE,
+)
+
+# Detects reference words that signal continuation from a previous query
+_CONTINUATION_RE = re.compile(
+    r"\b("
+    r"this|these|that|those|"
+    r"it|its|"
+    r"them|they|their|"
+    r"the\s+(above|previous|last|same|result|results|list|data|records?|ones?)|"
+    r"above|"
+    r"among\s*st?\s+them|"
+    r"from\s+(them|those|that)|"
+    r"of\s+(them|those)|"
+    r"in\s+(them|those)|"
+    r"which\s+of|who\s+among"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _build_history_chain(question: str, raw_history: list[dict]) -> list[dict]:
+    """Walk backward through raw_history, collecting only the relevant continuation chain.
+
+    Returns [] immediately if the current question has no reference words (fresh query).
+    Stops walking as soon as it reaches a user message with no reference words — that
+    message is the chain root and IS included.
+    """
+    if not raw_history or not _CONTINUATION_RE.search(question):
+        return []
+
+    chain: list[dict] = []
+    i = len(raw_history) - 1
+
+    # raw_history is ordered oldest→newest; each pair is [user, assistant]
+    while i >= 1:
+        asst = raw_history[i]
+        user = raw_history[i - 1]
+
+        # Skip misaligned entries (shouldn't happen but guard anyway)
+        if user.get("role") != "user" or asst.get("role") != "assistant":
+            i -= 1
+            continue
+
+        chain = [user, asst] + chain         # prepend to preserve order
+
+        if _CONTINUATION_RE.search(user["content"]):
+            i -= 2                           # this user msg was also a continuation — go further back
+        else:
+            break                            # fresh question found — this is the chain root, stop
+
+    return chain
+
 from core.security import decrypt_value
 import db.platform_db as pdb
 from db.client_db import execute_query
@@ -21,9 +77,11 @@ from chat.prompt_builder import (
     build_response_prompt,
     build_rag_response_prompt,
     build_combined_response_prompt,
+    build_chart_prompt,
+    _human_access_note,
 )
 from chat.sql_validator import validate_query
-from chat.llm_client import generate_sql, generate_mongo_query, format_response
+from chat.llm_client import generate_sql, generate_mongo_query, format_response, generate_chart_data
 from chat.row_filter_injector import inject_row_filters
 from rag.retrieval import retrieve_relevant_chunks
 
@@ -33,7 +91,7 @@ MAX_DB_RETRY_ATTEMPTS = 2
 LLM_FLAGS = {"UNRELATED", "NO_ACCESS", "INCOMPLETE"}
 
 FLAG_MESSAGES = {
-    "UNRELATED":  "Your question doesn't seem related to the available data. Please ask something about your company's data.",
+    "UNRELATED":  "No data found for your query.",
     "NO_ACCESS":  "You don't have access to the data required to answer this question.",
     "INCOMPLETE": "Your question is a bit vague. Could you provide more details?",
 }
@@ -100,6 +158,8 @@ async def _run_db_pipeline(
     db_config: dict,
     firm_id: str,
     row_filters: dict | None = None,
+    history: list[dict] | None = None,
+    wants_chart: bool = False,
 ) -> dict:
     """
     Returns:
@@ -130,6 +190,9 @@ async def _run_db_pipeline(
                 previous_query=previous_raw,
                 validation_error=validation_error,
                 db_error=db_error,
+                history=history,
+                wants_chart=wants_chart,
+                row_filters=row_filters,
             )
         else:
             prompt = build_mysql_prompt(
@@ -138,6 +201,9 @@ async def _run_db_pipeline(
                 previous_sql=previous_raw,
                 validation_error=validation_error,
                 db_error=db_error,
+                history=history,
+                wants_chart=wants_chart,
+                row_filters=row_filters,
             )
 
         raw_output   = _clean_llm_output(await _generate(db_type, prompt))
@@ -170,7 +236,9 @@ async def _run_db_pipeline(
         )
 
     # Safety-net: inject any row filters the LLM may have missed
-    parsed_query = inject_row_filters(db_type, parsed_query, row_filters)
+    parsed_query, access_denied = inject_row_filters(db_type, parsed_query, row_filters)
+    if access_denied:
+        return {"flag": "NO_ACCESS", "attempts": total_attempts}
 
     # Execute -> DB-error retry loop
     results  = None
@@ -196,12 +264,14 @@ async def _run_db_pipeline(
                     question, schema_context, allowed_tables,
                     forbidden_tables=forbidden_tables,
                     previous_query=previous_raw, db_error=db_error,
+                    row_filters=row_filters,
                 )
             else:
                 retry_prompt = build_mysql_prompt(
                     question, schema_context, allowed_tables,
                     forbidden_tables=forbidden_tables,
                     previous_sql=previous_raw, db_error=db_error,
+                    row_filters=row_filters,
                 )
 
             raw_output = _clean_llm_output(await _generate(db_type, retry_prompt))
@@ -225,7 +295,8 @@ async def _run_db_pipeline(
     return {"rows": results or [], "attempts": total_attempts}
 
 
-async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
+async def handle_chat(question: str, user_id: str, firm_id: str,
+                      history: list[dict] | None = None) -> dict:
 
     # Short-circuit for greetings — no DB or RAG needed
     if _GREETING_RE.match(question.strip()):
@@ -259,6 +330,9 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
     db_result = None  # None means DB was not attempted
     has_db    = db_type not in (None, "none")
 
+    history_chain = _build_history_chain(question, history or [])
+    wants_chart   = bool(_CHART_RE.search(question))
+
     if has_db and schema:
         db_config = _build_db_config(firm)
         tables    = allowed_tables
@@ -268,6 +342,8 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
             db_result = await _run_db_pipeline(
                 question, db_type, schema, tables, db_config, firm_id,
                 row_filters=row_filters,
+                history=history_chain,
+                wants_chart=wants_chart,
             )
         except HTTPException:
             rag_task.cancel()
@@ -292,30 +368,55 @@ async def handle_chat(question: str, user_id: str, firm_id: str) -> dict:
     attempts = (db_result or {}).get("attempts")
 
     if has_db_rows and has_rag:
-        prompt = build_combined_response_prompt(question, db_result["rows"], rag_chunks, row_filters=row_filters)
-        answer = await format_response(prompt)
-        return {"answer": answer, "rows_count": len(db_result["rows"]), "attempts": attempts}
+        text_prompt = build_combined_response_prompt(question, db_result["rows"], rag_chunks, row_filters=row_filters)
+        if wants_chart:
+            answer, chart_data = await asyncio.gather(
+                format_response(text_prompt),
+                generate_chart_data(build_chart_prompt(question, db_result["rows"])),
+            )
+        else:
+            answer      = await format_response(text_prompt)
+            chart_data  = None
+        return {"answer": answer, "rows_count": len(db_result["rows"]), "attempts": attempts, "chart_data": chart_data}
 
     if has_db_rows:
-        answer = await format_response(build_response_prompt(question, db_result["rows"], row_filters=row_filters))
-        return {"answer": answer, "rows_count": len(db_result["rows"]), "attempts": attempts}
+        text_prompt = build_response_prompt(question, db_result["rows"], row_filters=row_filters)
+        if wants_chart:
+            answer, chart_data = await asyncio.gather(
+                format_response(text_prompt),
+                generate_chart_data(build_chart_prompt(question, db_result["rows"])),
+            )
+        else:
+            answer      = await format_response(text_prompt)
+            chart_data  = None
+        return {"answer": answer, "rows_count": len(db_result["rows"]), "attempts": attempts, "chart_data": chart_data}
 
     if has_rag:
         answer = await format_response(build_rag_response_prompt(question, rag_chunks))
-        return {"answer": answer, "rows_count": has_db_empty and 0 or None, "attempts": attempts}
+        return {"answer": answer, "rows_count": has_db_empty and 0 or None, "attempts": attempts, "chart_data": None}
 
     if has_db_flag:
         return {
             "answer":     FLAG_MESSAGES[db_result["flag"]],
             "rows_count": None,
             "attempts":   attempts,
+            "chart_data": None,
         }
 
     if has_db_empty:
-        return {"answer": "No data found for your query.", "rows_count": 0, "attempts": attempts}
+        if row_filters:
+            note = _human_access_note(row_filters)
+            answer = (
+                f"No data found within your accessible data ({note})."
+                if note else "No data found for your query."
+            )
+        else:
+            answer = "No data found for your query."
+        return {"answer": answer, "rows_count": 0, "attempts": attempts, "chart_data": None}
 
     return {
         "answer":     "No relevant information found. Please contact your admin to configure your data sources.",
         "rows_count": None,
         "attempts":   None,
+        "chart_data": None,
     }

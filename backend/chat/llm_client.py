@@ -1,3 +1,4 @@
+import json
 import httpx
 from core.config import settings
 
@@ -44,3 +45,14 @@ async def generate_mongo_query(prompt: str) -> str:
 
 async def format_response(prompt: str) -> str:
     return await _call(prompt, max_tokens=1000, response_type="text")
+
+
+async def generate_chart_data(prompt: str) -> dict | None:
+    try:
+        raw = await _call(prompt, max_tokens=800, response_type="text")
+        cleaned = raw.strip().strip("`").replace("```json", "").replace("```", "").strip()
+        if cleaned.lower() == "null":
+            return None
+        return json.loads(cleaned)
+    except Exception:
+        return None

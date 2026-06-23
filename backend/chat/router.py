@@ -11,5 +11,6 @@ async def chat_query(body: ChatRequest, current_user: dict = Depends(get_current
         question=body.question,
         user_id=current_user["sub"],
         firm_id=current_user["firm_id"],
+        history=[m.model_dump() for m in body.history],
     )
     return ChatResponse(**result)

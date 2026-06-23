@@ -28,8 +28,8 @@ export const login = (firm_id, login_id, password) =>
   api.post("/auth/login", { firm_id, login_id, password }).then((r) => r.data);
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
-export const sendQuestion = (question) =>
-  api.post("/chat/query", { question }).then((r) => r.data);
+export const sendQuestion = (question, history = []) =>
+  api.post("/chat/query", { question, history }).then((r) => r.data);
 
 // ── Admin ─────────────────────────────────────────────────────────────────────
 export const getSchema = () => api.get("/admin/schema").then((r) => r.data);

@@ -121,7 +121,9 @@ function CheckboxGroup({ label, allLabel, items, allChecked, selected, onToggleA
   );
 }
 
-const emptyTableRow = () => ({ id: Date.now() + Math.random(), table: "", conditional: false, column: "", values: [""] });
+const emptyValueRow  = () => ({ id: Date.now() + Math.random(), operator: "eq", value: "" });
+const emptyAttribute = () => ({ id: Date.now() + Math.random(), column: "", values: [emptyValueRow()] });
+const emptyTableRow  = () => ({ id: Date.now() + Math.random(), table: "", conditional: false, attributes: [emptyAttribute()] });
 
 function Toggle({ on, onToggle }) {
   return (
@@ -155,35 +157,82 @@ function RolesTab({ notify, onRolesChange }) {
     getDocuments().then((d) => setDocList(d.map((doc) => doc.filename))).catch(() => {});
   }, []);
 
-  // ── table perm helpers ──────────────────────────────────────────────────
+  // ── table-level helpers ──────────────────────────────────────────────────
   const addTableRow    = () => setTablePerms((p) => [...p, emptyTableRow()]);
   const removeTableRow = (id) => setTablePerms((p) => p.filter((r) => r.id !== id));
   const updateRow      = (id, field, val) =>
     setTablePerms((p) => p.map((r) => r.id === id ? { ...r, [field]: val } : r));
-  // When the table selection changes, reset the attribute so the dropdown repopulates
+  // When the table changes, reset attributes so field dropdowns repopulate correctly
   const updateRowTable = (id, val) =>
-    setTablePerms((p) => p.map((r) => r.id === id ? { ...r, table: val, column: "" } : r));
-  const addValue       = (id) =>
-    setTablePerms((p) => p.map((r) => r.id === id ? { ...r, values: [...r.values, ""] } : r));
-  const updateValue    = (id, idx, val) =>
-    setTablePerms((p) => p.map((r) => r.id === id
-      ? { ...r, values: r.values.map((v, i) => i === idx ? val : v) }
+    setTablePerms((p) => p.map((r) => r.id === id ? { ...r, table: val, attributes: [emptyAttribute()] } : r));
+
+  // ── attribute helpers (one attribute = one column with ≥1 value rows) ──
+  const addAttribute    = (tableId) =>
+    setTablePerms((p) => p.map((r) => r.id === tableId
+      ? { ...r, attributes: [...(r.attributes || []), emptyAttribute()] }
       : r));
-  const removeValue    = (id, idx) =>
-    setTablePerms((p) => p.map((r) => r.id === id && r.values.length > 1
-      ? { ...r, values: r.values.filter((_, i) => i !== idx) }
+  const removeAttribute = (tableId, attrId) =>
+    setTablePerms((p) => p.map((r) => r.id === tableId
+      ? { ...r, attributes: (r.attributes || []).filter((a) => a.id !== attrId) }
+      : r));
+  const updateAttribute = (tableId, attrId, field, val) =>
+    setTablePerms((p) => p.map((r) => r.id === tableId
+      ? { ...r, attributes: (r.attributes || []).map((a) => a.id === attrId ? { ...a, [field]: val } : a) }
+      : r));
+
+  // ── value helpers (one value row = one operator + value for an attribute) ──
+  const addValue    = (tableId, attrId) =>
+    setTablePerms((p) => p.map((r) => r.id === tableId
+      ? { ...r, attributes: (r.attributes || []).map((a) => a.id === attrId
+          ? { ...a, values: [...(a.values || []), emptyValueRow()] }
+          : a) }
+      : r));
+  const removeValue = (tableId, attrId, valId) =>
+    setTablePerms((p) => p.map((r) => r.id === tableId
+      ? { ...r, attributes: (r.attributes || []).map((a) => a.id === attrId
+          ? { ...a, values: (a.values || []).filter((v) => v.id !== valId) }
+          : a) }
+      : r));
+  const updateValue = (tableId, attrId, valId, field, val) =>
+    setTablePerms((p) => p.map((r) => r.id === tableId
+      ? { ...r, attributes: (r.attributes || []).map((a) => a.id === attrId
+          ? { ...a, values: (a.values || []).map((v) => v.id === valId ? { ...v, [field]: val } : v) }
+          : a) }
       : r));
 
   const buildPayload = () => {
     if (allTables) return { allowed_tables: ["*"], row_filters: {} };
     const allowed_tables = [...new Set(tablePerms.map((r) => r.table).filter(Boolean))];
     const row_filters = {};
+    const OP_MAP = { gt: "$gt", gte: "$gte", lt: "$lt", lte: "$lte", ne: "$ne" };
+
     tablePerms.forEach((row) => {
-      if (!row.table || !row.conditional || !row.column.trim()) return;
-      const vals = row.values.map((v) => v.trim()).filter(Boolean);
-      if (!vals.length) return;
+      if (!row.table || !row.conditional) return;
       if (!row_filters[row.table]) row_filters[row.table] = {};
-      row_filters[row.table][row.column.trim()] = vals;
+
+      (row.attributes || []).forEach((attr) => {
+        if (!attr.column) return;
+        const validVals = (attr.values || []).filter((v) => v.value.trim());
+        if (!validVals.length) return;
+        const col = attr.column;
+
+        // Equality values → stored as list (IN filter)
+        const eqVals = validVals.filter((v) => v.operator === "eq").map((v) => v.value.trim());
+        if (eqVals.length) {
+          row_filters[row.table][col] = eqVals;
+          return; // equality takes precedence for this attribute
+        }
+
+        // Operator values → stored as operator dict
+        const opDict = {};
+        validVals.forEach((v) => {
+          const op = OP_MAP[v.operator];
+          if (op) opDict[op] = v.value.trim();
+        });
+        if (Object.keys(opDict).length) {
+          row_filters[row.table][col] = opDict;
+        }
+      });
     });
     return { allowed_tables, row_filters };
   };
@@ -202,15 +251,31 @@ function RolesTab({ notify, onRolesChange }) {
     const isAll = role.allowed_tables[0] === "*";
     setAllTables(isAll);
     if (!isAll) {
+      const OP_REV = { "$gt": "gt", "$gte": "gte", "$lt": "lt", "$lte": "lte", "$ne": "ne" };
       const perms = role.allowed_tables.map((tableName) => {
         const filters = role.row_filters?.[tableName];
         if (!filters || Object.keys(filters).length === 0) {
-          return { id: Date.now() + Math.random(), table: tableName, conditional: false, column: "", values: [""] };
+          return { id: Date.now() + Math.random(), table: tableName, conditional: false, attributes: [emptyAttribute()] };
         }
-        const [col, vals] = Object.entries(filters)[0];
+        // Rebuild attributes: each column in the filter → one attribute group
+        const attributes = Object.entries(filters).map(([col, rule]) => {
+          let values;
+          if (Array.isArray(rule)) {
+            values = rule.map((val) => ({ id: Date.now() + Math.random(), operator: "eq", value: String(val) }));
+          } else if (rule && typeof rule === "object") {
+            values = Object.entries(rule).map(([op, val]) => ({
+              id: Date.now() + Math.random(), operator: OP_REV[op] || "eq", value: String(val),
+            }));
+          } else if (rule != null) {
+            values = [{ id: Date.now() + Math.random(), operator: "eq", value: String(rule) }];
+          } else {
+            values = [emptyValueRow()];
+          }
+          return { id: Date.now() + Math.random(), column: col, values };
+        });
         return {
           id: Date.now() + Math.random(), table: tableName, conditional: true,
-          column: col, values: Array.isArray(vals) && vals.length > 0 ? vals.map(String) : [""],
+          attributes: attributes.length > 0 ? attributes : [emptyAttribute()],
         };
       });
       setTablePerms(perms.length > 0 ? perms : [emptyTableRow()]);
@@ -317,62 +382,86 @@ function RolesTab({ notify, onRolesChange }) {
                     )}
                   </div>
 
-                  {/* Conditional fields */}
-                  {row.conditional && (
-                    <div className="pl-1 pt-1 space-y-2 border-t border-gray-100">
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Attribute</label>
-                        {(() => {
-                          const fields = schemaData.find((t) => t.name === row.table)?.fields || [];
-                          return fields.length > 0 ? (
-                            <select
-                              value={row.column}
-                              onChange={(e) => updateRow(row.id, "column", e.target.value)}
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            >
-                              <option value="">Select attribute</option>
-                              {fields.map((f) => (
-                                <option key={f.name} value={f.name}>{f.name}</option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              value={row.column}
-                              onChange={(e) => updateRow(row.id, "column", e.target.value)}
-                              placeholder="e.g. department"
-                              className="w-full border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          );
-                        })()}
-                      </div>
-
-                      <div>
-                        <label className="text-xs text-gray-400 mb-1 block">Values</label>
-                        <div className="space-y-1.5">
-                          {row.values.map((val, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
-                              <input
-                                value={val}
-                                onChange={(e) => updateValue(row.id, idx, e.target.value)}
-                                placeholder={`Value ${idx + 1}`}
-                                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                              />
-                              {row.values.length > 1 && (
-                                <button type="button" onClick={() => removeValue(row.id, idx)}
-                                  className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors">
+                  {/* Conditional filters — grouped by attribute */}
+                  {row.conditional && (() => {
+                    const fields = schemaData.find((t) => t.name === row.table)?.fields || [];
+                    return (
+                      <div className="pt-2 space-y-3 border-t border-gray-100">
+                        {(row.attributes || []).map((attr) => (
+                          <div key={attr.id} className="space-y-1">
+                            {/* Attribute selector row */}
+                            <div className="flex items-center gap-1.5">
+                              {fields.length > 0 ? (
+                                <select
+                                  value={attr.column}
+                                  onChange={(e) => updateAttribute(row.id, attr.id, "column", e.target.value)}
+                                  className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                >
+                                  <option value="">Select attribute</option>
+                                  {fields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
+                                </select>
+                              ) : (
+                                <input
+                                  value={attr.column}
+                                  onChange={(e) => updateAttribute(row.id, attr.id, "column", e.target.value)}
+                                  placeholder="attribute"
+                                  className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              )}
+                              {(row.attributes || []).length > 1 && (
+                                <button type="button" onClick={() => removeAttribute(row.id, attr.id)}
+                                  className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors flex-shrink-0">
                                   ×
                                 </button>
                               )}
                             </div>
-                          ))}
-                          <button type="button" onClick={() => addValue(row.id)}
-                            className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors">
-                            <span className="text-sm font-bold">+</span> Add value
-                          </button>
-                        </div>
+
+                            {/* Value rows for this attribute */}
+                            <div className="pl-4 space-y-1">
+                              {(attr.values || []).map((val) => (
+                                <div key={val.id} className="flex items-center gap-1.5">
+                                  <select
+                                    value={val.operator}
+                                    onChange={(e) => updateValue(row.id, attr.id, val.id, "operator", e.target.value)}
+                                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
+                                  >
+                                    <option value="eq">equals</option>
+                                    <option value="gt">greater than</option>
+                                    <option value="gte">≥ gte</option>
+                                    <option value="lt">less than</option>
+                                    <option value="lte">≤ lte</option>
+                                    <option value="ne">not equals</option>
+                                  </select>
+                                  <input
+                                    value={val.value}
+                                    onChange={(e) => updateValue(row.id, attr.id, val.id, "value", e.target.value)}
+                                    placeholder="value"
+                                    className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  />
+                                  {(attr.values || []).length > 1 && (
+                                    <button type="button" onClick={() => removeValue(row.id, attr.id, val.id)}
+                                      className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors flex-shrink-0">
+                                      ×
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              <button type="button" onClick={() => addValue(row.id, attr.id)}
+                                className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 transition-colors">
+                                <span className="text-sm font-bold">+</span> Add value
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+
+                        {/* Add attribute button */}
+                        <button type="button" onClick={() => addAttribute(row.id)}
+                          className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors mt-1">
+                          <span className="text-sm font-bold">+</span> Add attribute
+                        </button>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               ))}
 

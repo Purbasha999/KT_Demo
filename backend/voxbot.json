@@ -240,7 +240,7 @@
         { "name": "attempt_id",         "type": "string",   "description": "ID of the current/last attempt." },
         { "name": "batch_id",           "type": "string",   "description": "Reference to batch_uploads.batch_id." },
         { "name": "call_source",        "type": "string",   "description": "Source of the call e.g. bulk_upload, manual." },
-        { "name": "call_summary",       "type": "string",   "description": "AI-generated summary of the call." },
+        { "name": "call_summary",       "type": "string",   "description": "AI-generated summary of the call recorded." },
         { "name": "transcript",         "type": "string",   "description": "Full call transcript text. Null if unavailable." },
         { "name": "notes",              "type": "string",   "description": "Manual notes added to the call." },
         { "name": "recording_file",     "type": "string",   "description": "Recording filename. Null if not recorded." },

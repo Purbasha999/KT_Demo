@@ -105,14 +105,21 @@ class UserListItem(BaseModel):
 
 
 # Chat
+class HistoryMessage(BaseModel):
+    role:    str   # "user" | "assistant"
+    content: str
+
+
 class ChatRequest(BaseModel):
     question: str
+    history:  list[HistoryMessage] = []
 
 
 class ChatResponse(BaseModel):
     answer:     str
-    rows_count: Optional[int] = None
-    attempts:   Optional[int] = None
+    rows_count: Optional[int]  = None
+    attempts:   Optional[int]  = None
+    chart_data: Optional[dict] = None
 
 
 # Documents

@@ -37,6 +37,22 @@ def _coerce_operator_expr(op_dict: dict) -> dict:
             result[op] = val
     return result
 
+
+def _coerce_match_stage(match_filter: dict) -> dict:
+    """Apply date coercion to a $match stage filter, recursing into $and/$or/$nor arrays."""
+    result = {}
+    for k, v in match_filter.items():
+        if k in ("$and", "$or", "$nor") and isinstance(v, list):
+            result[k] = [_coerce_match_stage(item) if isinstance(item, dict) else item for item in v]
+        elif isinstance(v, dict):
+            result[k] = _coerce_operator_expr(v)
+        elif isinstance(v, str):
+            parsed = _try_parse_date(v)
+            result[k] = parsed if parsed is not None else v
+        else:
+            result[k] = v
+    return result
+
 _mysql_pools: dict[str, aiomysql.Pool] = {}
 
 
@@ -133,7 +149,10 @@ def _coerce_filter(filter_dict: dict, schema_fields: list[dict]) -> dict:
     for k, v in filter_dict.items():
         field_key = k.split(".")[-1]   # handle dot-notation e.g. "source.city"
 
-        if isinstance(v, dict):
+        if k in ("$and", "$or", "$nor") and isinstance(v, list):
+            coerced[k] = [_coerce_filter(item, schema_fields) if isinstance(item, dict) else item for item in v]
+
+        elif isinstance(v, dict):
             # Recurse into operator expressions to convert ISO date strings to datetime
             coerced[k] = _coerce_operator_expr(v)
 
@@ -180,13 +199,17 @@ async def _execute_mongo(firm_id: str, db_config: dict,
     try:
         if op == "aggregate":
             pipeline = operation.get("pipeline", [])
+            coerced_pipeline = []
             for stage in pipeline:
                 for forbidden in ("$out", "$merge"):
                     if forbidden in stage:
                         raise ValueError(
                             f"Pipeline stage '{forbidden}' is not allowed."
                         )
-            rows = await collection.aggregate(pipeline).to_list(length=limit)
+                if "$match" in stage:
+                    stage = {"$match": _coerce_match_stage(stage["$match"])}
+                coerced_pipeline.append(stage)
+            rows = await collection.aggregate(coerced_pipeline).to_list(length=limit)
 
         elif op == "count_documents":
             filt  = _coerce_filter(operation.get("filter", {}), schema_fields)
