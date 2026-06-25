@@ -133,6 +133,7 @@ async def _migrate():
         "ALTER TABLE firm_documents ADD COLUMN description TEXT",
         "ALTER TABLE roles ADD COLUMN allowed_documents JSON NOT NULL DEFAULT (JSON_ARRAY('*'))",
         "ALTER TABLE firms MODIFY COLUMN db_type ENUM('mysql','mongodb','none') NOT NULL DEFAULT 'none'",
+        "ALTER TABLE firms ADD COLUMN last_accessed_at TIMESTAMP NULL",
     ]
     async with _pool.acquire() as conn:
         async with conn.cursor() as cur:
@@ -415,4 +416,214 @@ async def delete_document_record(firm_id: str, filename: str):
             await cur.execute(
                 "DELETE FROM firm_documents WHERE firm_id = %s AND filename = %s",
                 (firm_id, filename),
+            )
+
+
+# ── User helpers ───────────────────────────────────────────────────────────────
+async def get_user_by_id(user_id: str, firm_id: str) -> Optional[dict]:
+    async with _pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute(
+                "SELECT * FROM users WHERE user_id=%s AND firm_id=%s",
+                (user_id, firm_id),
+            )
+            return await cur.fetchone()
+
+
+async def update_user_details(
+    user_id: str, firm_id: str, display_name: str, login_id: str,
+    password_hash: Optional[str] = None,
+) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            if password_hash:
+                await cur.execute(
+                    """UPDATE users SET display_name=%s, login_id=%s, password_hash=%s
+                       WHERE user_id=%s AND firm_id=%s AND is_admin=FALSE""",
+                    (display_name, login_id, password_hash, user_id, firm_id),
+                )
+            else:
+                await cur.execute(
+                    """UPDATE users SET display_name=%s, login_id=%s
+                       WHERE user_id=%s AND firm_id=%s AND is_admin=FALSE""",
+                    (display_name, login_id, user_id, firm_id),
+                )
+
+
+# ── Superadmin: dashboard ──────────────────────────────────────────────────────
+async def get_superadmin_stats() -> dict:
+    async with _pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("""
+                SELECT
+                    (SELECT COUNT(*) FROM firms) AS firm_count,
+                    (SELECT COUNT(*) FROM users WHERE is_admin = TRUE)  AS admin_count,
+                    (SELECT COUNT(*) FROM users WHERE is_admin = FALSE) AS user_count
+            """)
+            return await cur.fetchone()
+
+
+# ── Superadmin: firms CRUD ─────────────────────────────────────────────────────
+async def get_all_firms_detailed() -> list[dict]:
+    async with _pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("""
+                SELECT
+                    f.firm_id, f.firm_name, f.description, f.db_type,
+                    f.db_host, f.db_port, f.db_name, f.db_user,
+                    f.created_at, f.last_accessed_at,
+                    COUNT(DISTINCT CASE WHEN u.is_admin=FALSE THEN u.user_id END) AS user_count,
+                    COUNT(DISTINCT CASE WHEN u.is_admin=TRUE  THEN u.user_id END) AS admin_count
+                FROM firms f
+                LEFT JOIN users u ON f.firm_id = u.firm_id
+                GROUP BY f.firm_id
+                ORDER BY f.firm_name
+            """)
+            rows = await cur.fetchall()
+            for r in rows:
+                for col in ("created_at", "last_accessed_at"):
+                    if r.get(col):
+                        r[col] = r[col].isoformat()
+            return rows
+
+
+async def update_firm(
+    firm_id: str, firm_name: str, description: str, db_type: str,
+    db_host: Optional[str] = None, db_port: Optional[int] = None,
+    db_name: Optional[str] = None, db_user: Optional[str] = None,
+    db_password_enc: Optional[str] = None, mongo_uri_enc: Optional[str] = None,
+) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            sets   = ["firm_name=%s", "description=%s", "db_type=%s",
+                      "db_host=%s", "db_port=%s", "db_name=%s", "db_user=%s"]
+            params = [firm_name, description, db_type, db_host, db_port, db_name, db_user]
+            if db_password_enc is not None:
+                sets.append("db_password=%s");  params.append(db_password_enc)
+            if mongo_uri_enc is not None:
+                sets.append("mongo_uri=%s");     params.append(mongo_uri_enc)
+            params.append(firm_id)
+            await cur.execute(f"UPDATE firms SET {', '.join(sets)} WHERE firm_id=%s", params)
+
+
+async def delete_firm(firm_id: str) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute("DELETE FROM firms WHERE firm_id=%s", (firm_id,))
+
+
+async def get_firms_list() -> list[dict]:
+    async with _pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("SELECT firm_id, firm_name FROM firms ORDER BY firm_name")
+            return await cur.fetchall()
+
+
+# ── Superadmin: admins CRUD ────────────────────────────────────────────────────
+async def get_all_admins() -> list[dict]:
+    async with _pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("""
+                SELECT u.user_id, u.firm_id, f.firm_name, u.login_id,
+                       u.display_name, u.created_at
+                FROM users u
+                JOIN firms f ON u.firm_id = f.firm_id
+                WHERE u.is_admin = TRUE
+                ORDER BY f.firm_name, u.display_name
+            """)
+            rows = await cur.fetchall()
+            for r in rows:
+                if r.get("created_at"):
+                    r["created_at"] = r["created_at"].isoformat()
+            return rows
+
+
+async def create_admin(
+    user_id: str, firm_id: str, login_id: str,
+    password_hash: str, display_name: str,
+) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                """INSERT INTO users
+                   (user_id, firm_id, login_id, password_hash, display_name, is_admin)
+                   VALUES (%s,%s,%s,%s,%s,TRUE)""",
+                (user_id, firm_id, login_id, password_hash, display_name),
+            )
+
+
+async def update_admin(
+    user_id: str, display_name: str, login_id: str,
+    password_hash: Optional[str] = None,
+) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            if password_hash:
+                await cur.execute(
+                    """UPDATE users SET display_name=%s, login_id=%s, password_hash=%s
+                       WHERE user_id=%s AND is_admin=TRUE""",
+                    (display_name, login_id, password_hash, user_id),
+                )
+            else:
+                await cur.execute(
+                    """UPDATE users SET display_name=%s, login_id=%s
+                       WHERE user_id=%s AND is_admin=TRUE""",
+                    (display_name, login_id, user_id),
+                )
+
+
+async def delete_admin(user_id: str) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM users WHERE user_id=%s AND is_admin=TRUE", (user_id,)
+            )
+
+
+# ── Superadmin: users (read/edit/delete) ──────────────────────────────────────
+async def get_all_users_superadmin() -> list[dict]:
+    async with _pool.acquire() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cur:
+            await cur.execute("""
+                SELECT u.user_id, u.firm_id, f.firm_name, u.login_id,
+                       u.display_name, u.created_at, r.role_name
+                FROM users u
+                JOIN firms f ON u.firm_id = f.firm_id
+                LEFT JOIN user_roles ur ON u.user_id = ur.user_id
+                LEFT JOIN roles r       ON ur.role_id = r.role_id
+                WHERE u.is_admin = FALSE
+                ORDER BY f.firm_name, u.display_name
+            """)
+            rows = await cur.fetchall()
+            for r in rows:
+                if r.get("created_at"):
+                    r["created_at"] = r["created_at"].isoformat()
+            return rows
+
+
+async def update_user_superadmin(
+    user_id: str, display_name: str, login_id: str,
+    password_hash: Optional[str] = None,
+) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            if password_hash:
+                await cur.execute(
+                    """UPDATE users SET display_name=%s, login_id=%s, password_hash=%s
+                       WHERE user_id=%s AND is_admin=FALSE""",
+                    (display_name, login_id, password_hash, user_id),
+                )
+            else:
+                await cur.execute(
+                    """UPDATE users SET display_name=%s, login_id=%s
+                       WHERE user_id=%s AND is_admin=FALSE""",
+                    (display_name, login_id, user_id),
+                )
+
+
+async def delete_user_superadmin(user_id: str) -> None:
+    async with _pool.acquire() as conn:
+        async with conn.cursor() as cur:
+            await cur.execute(
+                "DELETE FROM users WHERE user_id=%s AND is_admin=FALSE", (user_id,)
             )

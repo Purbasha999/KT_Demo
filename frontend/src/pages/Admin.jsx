@@ -4,35 +4,14 @@ import { useAuth } from "../hooks/useAuth";
 import {
   getSchema, uploadSchema,
   getRoles, createRole, updateRole, deleteRole,
-  getUsers, createUser, assignRole, deleteUser,
+  getUsers, createUser, updateUser, assignRole, deleteUser,
   getDocuments, uploadDocument, deleteDocument,
 } from "../api/client";
-
-// ── Minimal tab component ──────────────────────────────────────────────────
-function Tabs({ tabs, active, onChange }) {
-  return (
-    <div className="flex gap-1 border-b border-gray-200 mb-6">
-      {tabs.map((t) => (
-        <button
-          key={t}
-          onClick={() => onChange(t)}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-            active === t
-              ? "border-blue-600 text-blue-600"
-              : "border-transparent text-gray-500 hover:text-gray-700"
-          }`}
-        >
-          {t}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Toast({ msg, type }) {
   if (!msg) return null;
   return (
-    <div className={`fixed top-4 right-4 px-4 py-2 rounded-lg text-sm text-white shadow-lg ${
+    <div className={`fixed top-4 right-4 px-4 py-2 rounded-lg text-sm text-white shadow-lg z-50 ${
       type === "error" ? "bg-red-500" : "bg-green-500"
     }`}>
       {msg}
@@ -42,13 +21,12 @@ function Toast({ msg, type }) {
 
 // ── Schema tab ─────────────────────────────────────────────────────────────
 function SchemaTab({ notify }) {
-  const [json, setJson]   = useState("");
-  const [saved, setSaved] = useState(null);
+  const [json, setJson]       = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     getSchema()
-      .then((s) => { setJson(JSON.stringify(s, null, 2)); setSaved(s); })
+      .then((s) => setJson(JSON.stringify(s, null, 2)))
       .catch(() => {});
   }, []);
 
@@ -139,15 +117,15 @@ function Toggle({ on, onToggle }) {
 
 function RolesTab({ notify, onRolesChange }) {
   const [roles, setRoles]               = useState([]);
-  const [editingId, setEditingId]       = useState(null); // null = create mode, number = edit mode
+  const [editingId, setEditingId]       = useState(null);
   const [name, setName]                 = useState("");
-  const [allTables, setAllTables]   = useState(false);
-  const [tablePerms, setTablePerms] = useState([emptyTableRow()]);
-  const [allDocs, setAllDocs]       = useState(true);
-  const [selDocs, setSelDocs]       = useState([]);
-  const [schemaData, setSchemaData] = useState([]); // full table objects with fields
-  const [docList, setDocList]       = useState([]);
-  const [loading, setLoading]       = useState(false);
+  const [allTables, setAllTables]       = useState(false);
+  const [tablePerms, setTablePerms]     = useState([emptyTableRow()]);
+  const [allDocs, setAllDocs]           = useState(true);
+  const [selDocs, setSelDocs]           = useState([]);
+  const [schemaData, setSchemaData]     = useState([]);
+  const [docList, setDocList]           = useState([]);
+  const [loading, setLoading]           = useState(false);
 
   const load = () => getRoles().then((r) => { setRoles(r); onRolesChange(r); }).catch(() => {});
 
@@ -157,48 +135,35 @@ function RolesTab({ notify, onRolesChange }) {
     getDocuments().then((d) => setDocList(d.map((doc) => doc.filename))).catch(() => {});
   }, []);
 
-  // ── table-level helpers ──────────────────────────────────────────────────
   const addTableRow    = () => setTablePerms((p) => [...p, emptyTableRow()]);
   const removeTableRow = (id) => setTablePerms((p) => p.filter((r) => r.id !== id));
   const updateRow      = (id, field, val) =>
     setTablePerms((p) => p.map((r) => r.id === id ? { ...r, [field]: val } : r));
-  // When the table changes, reset attributes so field dropdowns repopulate correctly
   const updateRowTable = (id, val) =>
     setTablePerms((p) => p.map((r) => r.id === id ? { ...r, table: val, attributes: [emptyAttribute()] } : r));
 
-  // ── attribute helpers (one attribute = one column with ≥1 value rows) ──
   const addAttribute    = (tableId) =>
     setTablePerms((p) => p.map((r) => r.id === tableId
-      ? { ...r, attributes: [...(r.attributes || []), emptyAttribute()] }
-      : r));
+      ? { ...r, attributes: [...(r.attributes || []), emptyAttribute()] } : r));
   const removeAttribute = (tableId, attrId) =>
     setTablePerms((p) => p.map((r) => r.id === tableId
-      ? { ...r, attributes: (r.attributes || []).filter((a) => a.id !== attrId) }
-      : r));
+      ? { ...r, attributes: (r.attributes || []).filter((a) => a.id !== attrId) } : r));
   const updateAttribute = (tableId, attrId, field, val) =>
     setTablePerms((p) => p.map((r) => r.id === tableId
-      ? { ...r, attributes: (r.attributes || []).map((a) => a.id === attrId ? { ...a, [field]: val } : a) }
-      : r));
+      ? { ...r, attributes: (r.attributes || []).map((a) => a.id === attrId ? { ...a, [field]: val } : a) } : r));
 
-  // ── value helpers (one value row = one operator + value for an attribute) ──
   const addValue    = (tableId, attrId) =>
     setTablePerms((p) => p.map((r) => r.id === tableId
       ? { ...r, attributes: (r.attributes || []).map((a) => a.id === attrId
-          ? { ...a, values: [...(a.values || []), emptyValueRow()] }
-          : a) }
-      : r));
+          ? { ...a, values: [...(a.values || []), emptyValueRow()] } : a) } : r));
   const removeValue = (tableId, attrId, valId) =>
     setTablePerms((p) => p.map((r) => r.id === tableId
       ? { ...r, attributes: (r.attributes || []).map((a) => a.id === attrId
-          ? { ...a, values: (a.values || []).filter((v) => v.id !== valId) }
-          : a) }
-      : r));
+          ? { ...a, values: (a.values || []).filter((v) => v.id !== valId) } : a) } : r));
   const updateValue = (tableId, attrId, valId, field, val) =>
     setTablePerms((p) => p.map((r) => r.id === tableId
       ? { ...r, attributes: (r.attributes || []).map((a) => a.id === attrId
-          ? { ...a, values: (a.values || []).map((v) => v.id === valId ? { ...v, [field]: val } : v) }
-          : a) }
-      : r));
+          ? { ...a, values: (a.values || []).map((v) => v.id === valId ? { ...v, [field]: val } : v) } : a) } : r));
 
   const buildPayload = () => {
     if (allTables) return { allowed_tables: ["*"], row_filters: {} };
@@ -209,29 +174,16 @@ function RolesTab({ notify, onRolesChange }) {
     tablePerms.forEach((row) => {
       if (!row.table || !row.conditional) return;
       if (!row_filters[row.table]) row_filters[row.table] = {};
-
       (row.attributes || []).forEach((attr) => {
         if (!attr.column) return;
         const validVals = (attr.values || []).filter((v) => v.value.trim());
         if (!validVals.length) return;
         const col = attr.column;
-
-        // Equality values → stored as list (IN filter)
         const eqVals = validVals.filter((v) => v.operator === "eq").map((v) => v.value.trim());
-        if (eqVals.length) {
-          row_filters[row.table][col] = eqVals;
-          return; // equality takes precedence for this attribute
-        }
-
-        // Operator values → stored as operator dict
+        if (eqVals.length) { row_filters[row.table][col] = eqVals; return; }
         const opDict = {};
-        validVals.forEach((v) => {
-          const op = OP_MAP[v.operator];
-          if (op) opDict[op] = v.value.trim();
-        });
-        if (Object.keys(opDict).length) {
-          row_filters[row.table][col] = opDict;
-        }
+        validVals.forEach((v) => { const op = OP_MAP[v.operator]; if (op) opDict[op] = v.value.trim(); });
+        if (Object.keys(opDict).length) row_filters[row.table][col] = opDict;
       });
     });
     return { allowed_tables, row_filters };
@@ -257,7 +209,6 @@ function RolesTab({ notify, onRolesChange }) {
         if (!filters || Object.keys(filters).length === 0) {
           return { id: Date.now() + Math.random(), table: tableName, conditional: false, attributes: [emptyAttribute()] };
         }
-        // Rebuild attributes: each column in the filter → one attribute group
         const attributes = Object.entries(filters).map(([col, rule]) => {
           let values;
           if (Array.isArray(rule)) {
@@ -266,17 +217,13 @@ function RolesTab({ notify, onRolesChange }) {
             values = Object.entries(rule).map(([op, val]) => ({
               id: Date.now() + Math.random(), operator: OP_REV[op] || "eq", value: String(val),
             }));
-          } else if (rule != null) {
-            values = [{ id: Date.now() + Math.random(), operator: "eq", value: String(rule) }];
           } else {
             values = [emptyValueRow()];
           }
           return { id: Date.now() + Math.random(), column: col, values };
         });
-        return {
-          id: Date.now() + Math.random(), table: tableName, conditional: true,
-          attributes: attributes.length > 0 ? attributes : [emptyAttribute()],
-        };
+        return { id: Date.now() + Math.random(), table: tableName, conditional: true,
+          attributes: attributes.length > 0 ? attributes : [emptyAttribute()] };
       });
       setTablePerms(perms.length > 0 ? perms : [emptyTableRow()]);
     } else {
@@ -304,12 +251,7 @@ function RolesTab({ notify, onRolesChange }) {
     setLoading(true);
     try {
       const { allowed_tables, row_filters } = buildPayload();
-      const payload = {
-        role_name:         name,
-        allowed_tables,
-        allowed_documents: allDocs ? ["*"] : selDocs,
-        row_filters,
-      };
+      const payload = { role_name: name, allowed_tables, allowed_documents: allDocs ? ["*"] : selDocs, row_filters };
       if (editingId !== null) {
         await updateRole(editingId, payload);
         notify(`Role "${name}" updated`, "success");
@@ -333,7 +275,6 @@ function RolesTab({ notify, onRolesChange }) {
           {editingId !== null ? "Edit role" : "Create role"}
         </h3>
 
-        {/* Role name */}
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Role name</label>
           <input value={name} onChange={(e) => setName(e.target.value)}
@@ -341,10 +282,8 @@ function RolesTab({ notify, onRolesChange }) {
             placeholder="e.g. CEO, HR Head" />
         </div>
 
-        {/* Table permissions */}
         <div>
           <label className="text-xs text-gray-500 mb-2 block">Table permissions</label>
-
           <label className="flex items-center gap-2 text-sm text-gray-700 mb-3 cursor-pointer select-none">
             <input type="checkbox" checked={allTables}
               onChange={(e) => setAllTables(e.target.checked)}
@@ -356,75 +295,51 @@ function RolesTab({ notify, onRolesChange }) {
             <div className="space-y-2">
               {tablePerms.map((row) => (
                 <div key={row.id} className="border border-gray-200 rounded-lg p-3 bg-white space-y-2">
-
-                  {/* Table dropdown + toggle + remove */}
                   <div className="flex items-center gap-2">
-                    <select
-                      value={row.table}
-                      onChange={(e) => updateRowTable(row.id, e.target.value)}
-                      className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
+                    <select value={row.table} onChange={(e) => updateRowTable(row.id, e.target.value)}
+                      className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                       <option value="">Select table</option>
                       {schemaData.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
                     </select>
-
                     <span className="text-xs text-gray-400 whitespace-nowrap">Conditional</span>
-                    <Toggle
-                      on={row.conditional}
-                      onToggle={() => updateRow(row.id, "conditional", !row.conditional)}
-                    />
-
+                    <Toggle on={row.conditional} onToggle={() => updateRow(row.id, "conditional", !row.conditional)} />
                     {tablePerms.length > 1 && (
                       <button type="button" onClick={() => removeTableRow(row.id)}
-                        className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors">
-                        ×
-                      </button>
+                        className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors">×</button>
                     )}
                   </div>
 
-                  {/* Conditional filters — grouped by attribute */}
                   {row.conditional && (() => {
                     const fields = schemaData.find((t) => t.name === row.table)?.fields || [];
                     return (
                       <div className="pt-2 space-y-3 border-t border-gray-100">
                         {(row.attributes || []).map((attr) => (
                           <div key={attr.id} className="space-y-1">
-                            {/* Attribute selector row */}
                             <div className="flex items-center gap-1.5">
                               {fields.length > 0 ? (
-                                <select
-                                  value={attr.column}
+                                <select value={attr.column}
                                   onChange={(e) => updateAttribute(row.id, attr.id, "column", e.target.value)}
-                                  className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
+                                  className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500">
                                   <option value="">Select attribute</option>
                                   {fields.map((f) => <option key={f.name} value={f.name}>{f.name}</option>)}
                                 </select>
                               ) : (
-                                <input
-                                  value={attr.column}
+                                <input value={attr.column}
                                   onChange={(e) => updateAttribute(row.id, attr.id, "column", e.target.value)}
                                   placeholder="attribute"
-                                  className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                />
+                                  className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
                               )}
                               {(row.attributes || []).length > 1 && (
                                 <button type="button" onClick={() => removeAttribute(row.id, attr.id)}
-                                  className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors flex-shrink-0">
-                                  ×
-                                </button>
+                                  className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors flex-shrink-0">×</button>
                               )}
                             </div>
-
-                            {/* Value rows for this attribute */}
                             <div className="pl-4 space-y-1">
                               {(attr.values || []).map((val) => (
                                 <div key={val.id} className="flex items-center gap-1.5">
-                                  <select
-                                    value={val.operator}
+                                  <select value={val.operator}
                                     onChange={(e) => updateValue(row.id, attr.id, val.id, "operator", e.target.value)}
-                                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0"
-                                  >
+                                    className="border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 flex-shrink-0">
                                     <option value="eq">equals</option>
                                     <option value="gt">greater than</option>
                                     <option value="gte">≥ gte</option>
@@ -432,17 +347,13 @@ function RolesTab({ notify, onRolesChange }) {
                                     <option value="lte">≤ lte</option>
                                     <option value="ne">not equals</option>
                                   </select>
-                                  <input
-                                    value={val.value}
+                                  <input value={val.value}
                                     onChange={(e) => updateValue(row.id, attr.id, val.id, "value", e.target.value)}
                                     placeholder="value"
-                                    className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                  />
+                                    className="flex-1 min-w-0 border border-gray-300 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500" />
                                   {(attr.values || []).length > 1 && (
                                     <button type="button" onClick={() => removeValue(row.id, attr.id, val.id)}
-                                      className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors flex-shrink-0">
-                                      ×
-                                    </button>
+                                      className="text-gray-300 hover:text-red-400 text-xl leading-none transition-colors flex-shrink-0">×</button>
                                   )}
                                 </div>
                               ))}
@@ -453,8 +364,6 @@ function RolesTab({ notify, onRolesChange }) {
                             </div>
                           </div>
                         ))}
-
-                        {/* Add attribute button */}
                         <button type="button" onClick={() => addAttribute(row.id)}
                           className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors mt-1">
                           <span className="text-sm font-bold">+</span> Add attribute
@@ -476,7 +385,6 @@ function RolesTab({ notify, onRolesChange }) {
           )}
         </div>
 
-        {/* Document permissions — unchanged */}
         <CheckboxGroup
           label="Allowed documents"
           allLabel="All documents (*)"
@@ -502,7 +410,6 @@ function RolesTab({ notify, onRolesChange }) {
         </div>
       </div>
 
-      {/* Roles table */}
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-200">
@@ -527,13 +434,9 @@ function RolesTab({ notify, onRolesChange }) {
               </td>
               <td className="py-2 text-right whitespace-nowrap">
                 <button onClick={() => loadRoleForEdit(r)}
-                  className="text-xs text-blue-600 hover:text-blue-800 mr-3 transition-colors">
-                  Edit
-                </button>
+                  className="text-xs text-blue-600 hover:text-blue-800 mr-3 transition-colors">Edit</button>
                 <button onClick={() => handleDeleteRole(r)}
-                  className="text-xs text-red-400 hover:text-red-600 transition-colors">
-                  Delete
-                </button>
+                  className="text-xs text-red-400 hover:text-red-600 transition-colors">Delete</button>
               </td>
             </tr>
           ))}
@@ -548,31 +451,63 @@ function RolesTab({ notify, onRolesChange }) {
 
 // ── Users tab ──────────────────────────────────────────────────────────────
 function UsersTab({ roles, notify }) {
-  const [users, setUsers]       = useState([]);
-  const [loginId, setLoginId]   = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [password, setPassword] = useState("");
-  const [roleId, setRoleId]     = useState("");
-  const [loading, setLoading]   = useState(false);
+  const [users, setUsers]               = useState([]);
+  const [loginId, setLoginId]           = useState("");
+  const [displayName, setDisplayName]   = useState("");
+  const [password, setPassword]         = useState("");
+  const [roleId, setRoleId]             = useState("");
+  const [editingUser, setEditingUser]   = useState(null);
+  const [editLoginId, setEditLoginId]   = useState("");
+  const [editDisplay, setEditDisplay]   = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [editRoleId, setEditRoleId]     = useState("");
+  const [loading, setLoading]           = useState(false);
 
   const load = () => getUsers().then(setUsers).catch(() => {});
-
   useEffect(() => { load(); }, []);
 
-  const save = async () => {
+  const handleCreate = async () => {
     setLoading(true);
     try {
-      await createUser({
-        login_id: loginId,
-        display_name: displayName,
-        password,
-        role_id: roleId ? Number(roleId) : undefined,
-      });
+      await createUser({ login_id: loginId, display_name: displayName, password, role_id: roleId ? Number(roleId) : undefined });
       notify("User created", "success");
       setLoginId(""); setDisplayName(""); setPassword(""); setRoleId("");
       load();
     } catch (e) {
       notify(e.response?.data?.detail || "Failed to create user", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startEdit = (user) => {
+    setEditingUser(user);
+    setEditLoginId(user.login_id);
+    setEditDisplay(user.display_name || "");
+    setEditPassword("");
+    setEditRoleId(user.role_id ? String(user.role_id) : "");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelEdit = () => {
+    setEditingUser(null);
+    setEditLoginId(""); setEditDisplay(""); setEditPassword(""); setEditRoleId("");
+  };
+
+  const handleEdit = async () => {
+    setLoading(true);
+    try {
+      await updateUser(editingUser.user_id, {
+        login_id:     editLoginId,
+        display_name: editDisplay,
+        password:     editPassword || undefined,
+        role_id:      editRoleId ? Number(editRoleId) : undefined,
+      });
+      notify("User updated", "success");
+      cancelEdit();
+      load();
+    } catch (e) {
+      notify(e.response?.data?.detail || "Failed to update user", "error");
     } finally {
       setLoading(false);
     }
@@ -588,7 +523,7 @@ function UsersTab({ roles, notify }) {
     }
   };
 
-  const handleDeleteUser = async (user) => {
+  const handleDelete = async (user) => {
     if (!confirm(`Delete user "${user.display_name || user.login_id}"? This cannot be undone.`)) return;
     try {
       await deleteUser(user.user_id);
@@ -599,42 +534,86 @@ function UsersTab({ roles, notify }) {
     }
   };
 
+  const fieldCls = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
+
   return (
     <div className="space-y-6">
-      <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-        <h3 className="text-sm font-medium text-gray-700 mb-3">Create user</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Login ID</label>
-            <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="john.doe" />
+      {/* Edit form */}
+      {editingUser && (
+        <div className="bg-blue-50 rounded-xl p-4 border border-blue-200 space-y-3">
+          <h3 className="text-sm font-medium text-gray-700">
+            Edit user — <span className="text-blue-600">{editingUser.login_id}</span>
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Login ID</label>
+              <input value={editLoginId} onChange={(e) => setEditLoginId(e.target.value)} className={fieldCls} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Display name</label>
+              <input value={editDisplay} onChange={(e) => setEditDisplay(e.target.value)}
+                placeholder="Jane Doe" className={fieldCls} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">New password <span className="text-gray-400">(leave blank to keep)</span></label>
+              <input type="password" value={editPassword} onChange={(e) => setEditPassword(e.target.value)}
+                placeholder="••••••••" className={fieldCls} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Role</label>
+              <select value={editRoleId} onChange={(e) => setEditRoleId(e.target.value)} className={fieldCls}>
+                <option value="">No role</option>
+                {roles.map((r) => <option key={r.role_id} value={r.role_id}>{r.role_name}</option>)}
+              </select>
+            </div>
           </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Display name</label>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="John Doe" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 mb-1 block">Role</label>
-            <select value={roleId} onChange={(e) => setRoleId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Select role</option>
-              {roles.map((r) => <option key={r.role_id} value={r.role_id}>{r.role_name}</option>)}
-            </select>
+          <div className="flex gap-2">
+            <button onClick={handleEdit} disabled={loading || !editLoginId}
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+              {loading ? "Saving…" : "Update user"}
+            </button>
+            <button onClick={cancelEdit}
+              className="border border-gray-300 text-gray-600 hover:bg-gray-50 text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+              Cancel
+            </button>
           </div>
         </div>
-        <button onClick={save} disabled={loading || !loginId || !password}
-          className="mt-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
-          {loading ? "Creating…" : "Create user"}
-        </button>
-      </div>
+      )}
+
+      {/* Create form */}
+      {!editingUser && (
+        <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">Create user</h3>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Login ID</label>
+              <input value={loginId} onChange={(e) => setLoginId(e.target.value)}
+                className={fieldCls} placeholder="john.doe" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Display name</label>
+              <input value={displayName} onChange={(e) => setDisplayName(e.target.value)}
+                className={fieldCls} placeholder="John Doe" />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Password</label>
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                className={fieldCls} />
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 mb-1 block">Role</label>
+              <select value={roleId} onChange={(e) => setRoleId(e.target.value)} className={fieldCls}>
+                <option value="">Select role</option>
+                {roles.map((r) => <option key={r.role_id} value={r.role_id}>{r.role_name}</option>)}
+              </select>
+            </div>
+          </div>
+          <button onClick={handleCreate} disabled={loading || !loginId || !password}
+            className="mt-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
+            {loading ? "Creating…" : "Create user"}
+          </button>
+        </div>
+      )}
 
       <table className="w-full text-sm">
         <thead>
@@ -647,7 +626,7 @@ function UsersTab({ roles, notify }) {
         </thead>
         <tbody>
           {users.map((u) => (
-            <tr key={u.user_id} className="border-b border-gray-100">
+            <tr key={u.user_id} className={`border-b border-gray-100 ${editingUser?.user_id === u.user_id ? "bg-blue-50" : ""}`}>
               <td className="py-2 text-gray-700">{u.display_name || "—"}</td>
               <td className="py-2 text-gray-500 font-mono text-xs">{u.login_id}</td>
               <td className="py-2">
@@ -660,11 +639,11 @@ function UsersTab({ roles, notify }) {
                   {roles.map((r) => <option key={r.role_id} value={r.role_id}>{r.role_name}</option>)}
                 </select>
               </td>
-              <td className="py-2 text-right">
-                <button onClick={() => handleDeleteUser(u)}
-                  className="text-xs text-red-400 hover:text-red-600 transition-colors">
-                  Delete
-                </button>
+              <td className="py-2 text-right whitespace-nowrap">
+                <button onClick={() => startEdit(u)}
+                  className="text-xs text-blue-600 hover:text-blue-800 mr-3 transition-colors">Edit</button>
+                <button onClick={() => handleDelete(u)}
+                  className="text-xs text-red-400 hover:text-red-600 transition-colors">Delete</button>
               </td>
             </tr>
           ))}
@@ -679,19 +658,14 @@ function UsersTab({ roles, notify }) {
 
 // ── Documents tab ──────────────────────────────────────────────────────────
 function DocumentsTab({ notify }) {
-  const [docs, setDocs]           = useState([]);
-  const [loading, setLoading]     = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [docs, setDocs]               = useState([]);
+  const [loading, setLoading]         = useState(false);
+  const [uploading, setUploading]     = useState(false);
   const [description, setDescription] = useState("");
   const [pendingFile, setPendingFile] = useState(null);
 
   const load = () => getDocuments().then(setDocs).catch(() => {});
-
   useEffect(() => { load(); }, []);
-
-  const handleFileChange = (e) => {
-    setPendingFile(e.target.files?.[0] || null);
-  };
 
   const handleUpload = async () => {
     if (!pendingFile) return;
@@ -732,29 +706,19 @@ function DocumentsTab({ notify }) {
         </p>
         <div>
           <label className="text-xs text-gray-500 mb-1 block">File</label>
-          <input
-            type="file"
-            accept=".pdf"
-            onChange={handleFileChange}
+          <input type="file" accept=".pdf"
+            onChange={(e) => setPendingFile(e.target.files?.[0] || null)}
             disabled={uploading}
-            className="block text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50"
-          />
+            className="block text-sm text-gray-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 disabled:opacity-50" />
         </div>
         <div>
           <label className="text-xs text-gray-500 mb-1 block">Description (optional)</label>
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g. Q1 2025 Financial Report"
-            disabled={uploading}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-          />
+          <input value={description} onChange={(e) => setDescription(e.target.value)}
+            placeholder="e.g. Q1 2025 Financial Report" disabled={uploading}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50" />
         </div>
-        <button
-          onClick={handleUpload}
-          disabled={uploading || !pendingFile}
-          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-        >
+        <button onClick={handleUpload} disabled={uploading || !pendingFile}
+          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors">
           {uploading ? "Uploading…" : "Upload"}
         </button>
       </div>
@@ -775,15 +739,10 @@ function DocumentsTab({ notify }) {
               <td className="py-2 font-mono text-xs text-gray-700">{d.filename}</td>
               <td className="py-2 text-gray-500 text-xs">{d.description || "—"}</td>
               <td className="py-2 text-gray-500">{d.chunks_count}</td>
-              <td className="py-2 text-gray-400 text-xs">
-                {new Date(d.uploaded_at).toLocaleString()}
-              </td>
+              <td className="py-2 text-gray-400 text-xs">{new Date(d.uploaded_at).toLocaleString()}</td>
               <td className="py-2 text-right">
-                <button
-                  onClick={() => handleDelete(d.filename)}
-                  disabled={loading}
-                  className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50 transition-colors"
-                >
+                <button onClick={() => handleDelete(d.filename)} disabled={loading}
+                  className="text-xs text-red-500 hover:text-red-700 disabled:opacity-50 transition-colors">
                   Delete
                 </button>
               </td>
@@ -800,44 +759,62 @@ function DocumentsTab({ notify }) {
 
 // ── Main Admin page ────────────────────────────────────────────────────────
 export default function Admin() {
-  const [tab, setTab]       = useState("Schema");
-  const [roles, setRoles]   = useState([]);
-  const [toast, setToast]   = useState({ msg: "", type: "" });
-  const { user, logout }    = useAuth();
-  const navigate            = useNavigate();
+  const [tab, setTab]     = useState("Schema");
+  const [roles, setRoles] = useState([]);
+  const [toast, setToast] = useState({ msg: "", type: "" });
+  const { user, logout }  = useAuth();
+  const navigate          = useNavigate();
 
   const notify = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast({ msg: "", type: "" }), 3000);
   };
 
+  const navItems = ["Schema", "Roles", "Users", "Documents"];
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50">
       <Toast msg={toast.msg} type={toast.type} />
 
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div>
+      {/* Left sidebar */}
+      <aside className="w-52 bg-white border-r border-gray-200 flex flex-col fixed h-full z-10">
+        <div className="p-4 border-b border-gray-200">
           <h1 className="font-semibold text-gray-800">Admin panel</h1>
-          <p className="text-xs text-gray-500">{user?.firm_id}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{user?.firm_id}</p>
         </div>
-        <button
-          onClick={() => { logout(); navigate("/"); }}
-          className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
-        >
-          Sign out
-        </button>
-      </header>
+        <nav className="flex-1 p-3 space-y-0.5">
+          {navItems.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                tab === t
+                  ? "bg-blue-50 text-blue-700"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-800"
+              }`}
+            >
+              {t}
+            </button>
+          ))}
+        </nav>
+        <div className="p-3 border-t border-gray-200">
+          <button
+            onClick={() => { logout(); navigate("/"); }}
+            className="w-full text-left px-3 py-2 text-sm text-gray-500 hover:text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
+      </aside>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
-        <Tabs
-          tabs={["Schema", "Roles", "Users", "Documents"]}
-          active={tab}
-          onChange={setTab}
-        />
-        {tab === "Schema"    && <SchemaTab    notify={notify} />}
-        {tab === "Roles"     && <RolesTab     notify={notify} onRolesChange={setRoles} />}
-        {tab === "Users"     && <UsersTab     roles={roles} notify={notify} />}
-        {tab === "Documents" && <DocumentsTab notify={notify} />}
+      {/* Main content */}
+      <main className="ml-52 flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          {tab === "Schema"    && <SchemaTab    notify={notify} />}
+          {tab === "Roles"     && <RolesTab     notify={notify} onRolesChange={setRoles} />}
+          {tab === "Users"     && <UsersTab     roles={roles} notify={notify} />}
+          {tab === "Documents" && <DocumentsTab notify={notify} />}
+        </div>
       </main>
     </div>
   );

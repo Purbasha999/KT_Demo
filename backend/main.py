@@ -8,6 +8,7 @@ from db.client_db import close_all_pools
 from auth.router import router as auth_router
 from admin.router import router as admin_router
 from chat.router import router as chat_router
+from superadmin.router import router as superadmin_router
 from rag.vector_store import ensure_collection
 
 logger = logging.getLogger(__name__)
@@ -35,9 +36,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth_router,  prefix="/auth",  tags=["auth"])
-app.include_router(admin_router, prefix="/admin", tags=["admin"])
-app.include_router(chat_router,  prefix="/chat",  tags=["chat"])
+app.include_router(auth_router,       prefix="/auth",       tags=["auth"])
+app.include_router(admin_router,      prefix="/admin",      tags=["admin"])
+app.include_router(chat_router,       prefix="/chat",       tags=["chat"])
+app.include_router(superadmin_router, prefix="/superadmin", tags=["superadmin"])
 
 
 @app.get("/health")

@@ -74,3 +74,11 @@ async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
         )
     return current_user
+
+
+async def require_superadmin(current_user: dict = Depends(get_current_user)) -> dict:
+    if not current_user.get("is_superadmin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Super admin access required"
+        )
+    return current_user

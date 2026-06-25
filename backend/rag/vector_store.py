@@ -168,6 +168,19 @@ async def delete_by_firm_and_source(firm_id: str, source: str) -> None:
     )
 
 
+async def delete_all_by_firm(firm_id: str) -> None:
+    client = get_qdrant_client()
+    logger.info("Deleting all vectors for firm_id='%s'", firm_id)
+    await client.delete(
+        collection_name=settings.QDRANT_COLLECTION,
+        points_selector=FilterSelector(
+            filter=Filter(
+                must=[FieldCondition(key="firm_id", match=MatchValue(value=firm_id))]
+            )
+        ),
+    )
+
+
 async def list_sources_for_firm(firm_id: str) -> list[str]:
     client = get_qdrant_client()
     sources: set[str] = set()

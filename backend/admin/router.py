@@ -7,7 +7,7 @@ from core.config import settings
 from models.schemas import (
     SchemaUploadRequest,
     RoleCreateRequest, RoleResponse,
-    UserCreateRequest, UserRoleAssignRequest, UserListItem,
+    UserCreateRequest, UserUpdateRequest, UserRoleAssignRequest, UserListItem,
     DocumentUploadResponse, DocumentListItem,
 )
 import db.platform_db as pdb
@@ -122,6 +122,24 @@ async def create_user(body: UserCreateRequest, admin=Depends(require_admin)):
 @router.get("/users", response_model=list[UserListItem])
 async def list_users(admin=Depends(require_admin)):
     return await pdb.get_users_for_firm(admin["firm_id"])
+
+
+@router.put("/user/{user_id}", status_code=200)
+async def update_user(user_id: str, body: UserUpdateRequest, admin=Depends(require_admin)):
+    firm_id = admin["firm_id"]
+    user = await pdb.get_user_by_id(user_id, firm_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    password_hash = hash_password(body.password) if body.password else None
+    await pdb.update_user_details(
+        user_id, firm_id,
+        body.display_name or body.login_id,
+        body.login_id,
+        password_hash,
+    )
+    if body.role_id is not None:
+        await pdb.assign_role_to_user(user_id, body.role_id)
+    return {"message": "User updated"}
 
 
 @router.post("/user/assign-role")

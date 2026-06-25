@@ -198,7 +198,12 @@ async def _execute_mongo(firm_id: str, db_config: dict,
 
     try:
         if op == "aggregate":
-            pipeline = operation.get("pipeline", [])
+            pipeline = list(operation.get("pipeline") or [])
+            # Prepend row-level filter injected by inject_row_filters_mongo as
+            # the first $match stage so it's always enforced on aggregate ops.
+            pre_filter = operation.get("filter")
+            if pre_filter:
+                pipeline = [{"$match": _coerce_match_stage(pre_filter)}] + pipeline
             coerced_pipeline = []
             for stage in pipeline:
                 for forbidden in ("$out", "$merge"):

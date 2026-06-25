@@ -36,6 +36,9 @@ class Settings(BaseSettings):
 
     MAX_UPLOAD_SIZE_MB: int = 50
 
+    SUPERADMIN_LOGIN:    str = "ADMIN"
+    SUPERADMIN_PASSWORD: str = "ADMIN"
+
     class Config:
         env_file = ".env"
 
